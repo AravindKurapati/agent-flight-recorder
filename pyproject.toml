@@ -5,12 +5,36 @@ build-backend = "hatchling.build"
 [project]
 name = "agent-flight-recorder"
 version = "0.1.0"
+description = "Local-first CLI that records every Claude Code and Codex session into a searchable SQLite database"
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
+authors = [
+    { name = "Aravind Kurapati", email = "arvind.kurapati@gmail.com" },
+]
+keywords = ["claude", "codex", "ai", "agents", "observability", "devtools", "cli", "llm", "session-recording"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
 dependencies = [
     "typer[all]>=0.12",
     "pydantic>=2",
     "rapidfuzz>=3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/AravindKurapati/agent-flight-recorder"
+Repository = "https://github.com/AravindKurapati/agent-flight-recorder"
+Issues = "https://github.com/AravindKurapati/agent-flight-recorder/issues"
 
 [project.scripts]
 afr = "agent_flight_recorder.cli:app"
