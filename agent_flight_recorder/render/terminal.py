@@ -17,7 +17,7 @@ def print_run_list(runs: list) -> None:
     table.add_column("Source", width=8)
     table.add_column("Goal", width=42)
     table.add_column("Outcome", width=12)
-    table.add_column("Tokensâ†‘", justify="right", width=9)
+    table.add_column("Tokens↑", justify="right", width=9)
     table.add_column("Date", width=17)
     for r in runs:
         color = _OUTCOME_COLORS.get(r["outcome"], "dim")
@@ -37,12 +37,12 @@ def print_run_list(runs: list) -> None:
 def print_run_detail(run, events: dict) -> None:
     console.print(Panel(
         f"[bold]{run['user_goal']}[/bold]\n"
-        f"[dim]{run['source']} | {run['started_at'][:16]} â†’ {run['ended_at'][:16]} | {run['outcome']}[/dim]"
+        f"[dim]{run['source']} | {run['started_at'][:16]} → {run['ended_at'][:16]} | {run['outcome']}[/dim]"
     ))
     if events["tool_calls"]:
         console.print("\n[bold]Tool Calls[/bold]")
         for tc in events["tool_calls"]:
-            icon = "[green]âœ“[/green]" if tc["status"] == "success" else "[red]âœ—[/red]"
+            icon = "[green]✓[/green]" if tc["status"] == "success" else "[red]✗[/red]"
             console.print(f"  {icon} [cyan]{tc['tool_name']}[/cyan]  {tc['input_summary'][:60]}")
     if events["shell_commands"]:
         console.print("\n[bold]Shell Commands[/bold]")
@@ -53,7 +53,7 @@ def print_run_detail(run, events: dict) -> None:
     if events["errors"]:
         console.print("\n[bold red]Errors[/bold red]")
         for err in events["errors"]:
-            console.print(f"  [red]â€¢[/red] {err['message'][:80]}")
+            console.print(f"  [red]•[/red] {err['message'][:80]}")
     console.print(
         f"\n[dim]Tokens: {run['tokens_in']} in / {run['tokens_out']} out"
         f" | Cache read: {run['cache_read']} | Cost: ${run['cost_usd']:.4f}[/dim]"
@@ -64,7 +64,7 @@ def print_stats(stats: dict) -> None:
     if not stats:
         console.print("[yellow]No runs found. Run `afr ingest claude` first.[/yellow]")
         return
-    console.print(Panel("[bold]Agent Flight Recorder â€” Stats[/bold]"))
+    console.print(Panel("[bold]Agent Flight Recorder — Stats[/bold]"))
     console.print(f"Total runs: [bold]{stats['total_runs']}[/bold]")
     console.print("\n[bold]Outcomes[/bold]")
     for outcome, count in stats["outcomes"].items():
