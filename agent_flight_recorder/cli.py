@@ -1,3 +1,8 @@
+import sys
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from typing import Optional
 import typer
 from .db import get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events, search_runs, set_outcome
@@ -6,7 +11,7 @@ from .analyzers.stats import get_stats
 from .analyzers.skill_extractor import run_extraction
 from .render.terminal import console, print_run_list, print_run_detail, print_stats
 
-app = typer.Typer(name="afr", help="Agent Flight Recorder â€” local AI session observability", add_completion=False)
+app = typer.Typer(name="afr", help="Agent Flight Recorder — local AI session observability", add_completion=False)
 
 _VALID_OUTCOMES = {"shipped", "blocked", "abandoned", "exploratory"}
 
