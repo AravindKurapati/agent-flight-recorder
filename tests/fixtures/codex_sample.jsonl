@@ -1,0 +1,7 @@
+{"type":"session_meta","session_id":"test-codex-001","project_path":"/home/user/project","timestamp":"2026-05-02T09:00:00Z"}
+{"type":"message","role":"user","content":"Debug the React component error","timestamp":"2026-05-02T09:00:01Z","session_id":"test-codex-001"}
+{"type":"response_item:function_call","name":"read_file","arguments":{"path":"src/App.tsx"},"call_id":"call_001","timestamp":"2026-05-02T09:00:05Z","session_id":"test-codex-001"}
+{"type":"function_call_output","call_id":"call_001","output":"export default function App() {}","exit_code":0,"timestamp":"2026-05-02T09:00:06Z","session_id":"test-codex-001"}
+{"type":"response_item:function_call","name":"exec_command","arguments":{"command":"npm test"},"call_id":"call_002","timestamp":"2026-05-02T09:00:10Z","session_id":"test-codex-001"}
+{"type":"function_call_output","call_id":"call_002","output":"PASS src/App.test.tsx","exit_code":0,"timestamp":"2026-05-02T09:00:15Z","session_id":"test-codex-001"}
+{"type":"token_count","input_tokens":500,"output_tokens":100,"session_id":"test-codex-001","timestamp":"2026-05-02T09:00:20Z"}
