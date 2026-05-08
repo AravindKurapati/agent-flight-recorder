@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-flight-recorder"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "typer[all]>=0.12",
+    "pydantic>=2",
+    "rapidfuzz>=3",
+]
+
+[project.scripts]
+afr = "agent_flight_recorder.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_flight_recorder"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
