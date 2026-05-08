@@ -11,24 +11,34 @@ _OUTCOME_COLORS = {
 }
 
 
+def _fmt_tokens(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.1f}K"
+    return str(n)
+
+
 def print_run_list(runs: list) -> None:
     table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("ID", style="dim", width=10)
-    table.add_column("Source", width=8)
-    table.add_column("Goal", width=42)
-    table.add_column("Outcome", width=12)
-    table.add_column("Tokens↑", justify="right", width=9)
-    table.add_column("Date", width=17)
+    table.add_column("ID", style="dim", no_wrap=True, min_width=8)
+    table.add_column("Source", no_wrap=True, min_width=6)
+    table.add_column("Goal", min_width=30)
+    table.add_column("Outcome", no_wrap=True, min_width=11)
+    table.add_column("In", justify="right", no_wrap=True, min_width=6)
+    table.add_column("Out", justify="right", no_wrap=True, min_width=7)
+    table.add_column("Date", no_wrap=True, min_width=13)
     for r in runs:
         color = _OUTCOME_COLORS.get(r["outcome"], "dim")
-        goal = r["user_goal"]
+        goal = r["user_goal"] or ""
         goal_cell = goal[:40] + ".." if len(goal) > 42 else goal
         table.add_row(
             r["id"][:8],
             r["source"],
             goal_cell,
             f"[{color}]{r['outcome']}[/{color}]",
-            str(r["tokens_in"]),
+            _fmt_tokens(r["tokens_in"]),
+            _fmt_tokens(r["tokens_out"]),
             r["started_at"][:16] if r["started_at"] else "",
         )
     console.print(table)
