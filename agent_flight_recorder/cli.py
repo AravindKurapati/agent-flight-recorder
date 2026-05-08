@@ -1,5 +1,7 @@
 import sys
 if sys.platform == "win32":
+    import ctypes
+    ctypes.windll.kernel32.SetConsoleOutputCP(65001)
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
