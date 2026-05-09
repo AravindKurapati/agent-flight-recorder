@@ -66,7 +66,7 @@ def print_run_detail(run, events: dict) -> None:
             console.print(f"  [red]•[/red] {err['message'][:80]}")
     console.print(
         f"\n[dim]Tokens: {run['tokens_in']} in / {run['tokens_out']} out"
-        f" | Cache read: {run['cache_read']} | Cost: ${run['cost_usd']:.4f}[/dim]"
+        f" | Cache read: {run['cache_read']} | API-equiv: ${run['cost_usd']:.4f}[/dim]"
     )
 
 

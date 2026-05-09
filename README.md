@@ -89,7 +89,7 @@ Shell Commands
 Errors
   • Error: missing secret huggingface-secret
 
-Tokens: 1,842 in / 4,201 out | Cache read: 920 | Cost: $0.0643
+Tokens: 1,842 in / 4,201 out | Cache read: 920 | API-equiv: $0.0643
 ```
 
 ### Search across all sessions
@@ -138,7 +138,7 @@ afr export 50c3f2a1 --out report.md   # writes to file
 **Date:** 2026-05-08T10:00 → 2026-05-08T10:14
 **Outcome:** untagged
 **Tokens:** 1,842 in / 4,201 out | Cache read: 920
-**Cost:** $0.0643
+**API-equiv:** $0.0643
 
 ## Goal
 Fix the Modal deployment error
