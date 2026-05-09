@@ -5,6 +5,7 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
+from pathlib import Path
 from typing import Optional
 import typer
 from .db import get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events, search_runs, set_outcome
@@ -104,6 +105,61 @@ def tag(
     set_outcome(conn, row["id"], outcome)
     conn.close()
     console.print(f"[green]Tagged {row['id'][:8]} as {outcome}.[/green]")
+
+
+@app.command()
+def export(
+    run_id: str = typer.Argument(..., help="Run ID or prefix"),
+    out: Optional[str] = typer.Option(None, "--out", "-o", help="Output file (default: stdout)"),
+):
+    """Export a run as a markdown report."""
+    conn = get_connection()
+    init_db(conn)
+    row = conn.execute("SELECT * FROM runs WHERE id LIKE ?", (f"{run_id}%",)).fetchone()
+    if not row:
+        console.print(f"[red]Run not found: {run_id}[/red]")
+        conn.close()
+        raise typer.Exit(1)
+    events = get_run_events(conn, row["id"])
+    conn.close()
+
+    lines = [
+        f"# Session: {row['id'][:8]}",
+        f"**Source:** {row['source']}  ",
+        f"**Date:** {row['started_at'][:16]} → {row['ended_at'][:16]}  ",
+        f"**Outcome:** {row['outcome']}  ",
+        f"**Tokens:** {row['tokens_in']:,} in / {row['tokens_out']:,} out | Cache read: {row['cache_read']:,}  ",
+        f"**Cost:** ${row['cost_usd']:.4f}",
+        "",
+        "## Goal",
+        row["user_goal"] or "_no goal recorded_",
+        "",
+    ]
+    if events["tool_calls"]:
+        lines += ["## Tool Calls", ""]
+        for tc in events["tool_calls"]:
+            icon = "✓" if tc["status"] == "success" else "✗"
+            lines.append(f"- {icon} **{tc['tool_name']}** `{tc['input_summary'][:80]}`")
+        lines.append("")
+    if events["shell_commands"]:
+        lines += ["## Shell Commands", ""]
+        for sc in events["shell_commands"]:
+            lines.append(f"- `[{sc['exit_code']}]` `{sc['command'][:80]}`")
+        lines.append("")
+    if events["errors"]:
+        lines += ["## Errors", ""]
+        for err in events["errors"]:
+            lines.append(f"- {err['message'][:120]}")
+        lines.append("")
+    if row["final_summary"]:
+        lines += ["## Summary", row["final_summary"], ""]
+
+    md = "\n".join(lines)
+    if out:
+        Path(out).write_text(md, encoding="utf-8")
+        console.print(f"[green]Written to {out}[/green]")
+    else:
+        print(md)
 
 
 @app.command("extract-skills")
