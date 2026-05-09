@@ -86,22 +86,45 @@ def stats(days: Optional[int] = typer.Option(None, "--days", "-d")):
     print_stats(s)
 
 
+def _is_hex_id(s: str) -> bool:
+    return len(s) >= 6 and all(c in "0123456789abcdefABCDEF" for c in s)
+
+
 @app.command()
 def tag(
-    run_id: str = typer.Argument(...),
+    run_id: str = typer.Argument(..., help="Run ID/prefix, or search text to find by goal"),
     outcome: str = typer.Argument(..., help="shipped | blocked | abandoned | exploratory"),
 ):
-    """Tag a run with an outcome."""
+    """Tag a run with an outcome. Accepts a hex run ID or a search query."""
     if outcome not in _VALID_OUTCOMES:
         console.print(f"[red]Invalid outcome. Choose: {', '.join(sorted(_VALID_OUTCOMES))}[/red]")
         raise typer.Exit(1)
     conn = get_connection()
     init_db(conn)
-    row = conn.execute("SELECT id FROM runs WHERE id LIKE ?", (f"{run_id}%",)).fetchone()
-    if not row:
-        console.print(f"[red]Run not found: {run_id}[/red]")
+
+    if _is_hex_id(run_id):
+        row = conn.execute("SELECT id FROM runs WHERE id LIKE ?", (f"{run_id}%",)).fetchone()
+        if not row:
+            console.print(f"[red]Run not found: {run_id}[/red]")
+            conn.close()
+            raise typer.Exit(1)
+        set_outcome(conn, row["id"], outcome)
+        conn.close()
+        console.print(f"[green]Tagged {row['id'][:8]} as {outcome}.[/green]")
+        return
+
+    # Treat as search query
+    matches = search_runs(conn, run_id)
+    if not matches:
+        console.print(f"[red]No runs found matching: {run_id}[/red]")
         conn.close()
         raise typer.Exit(1)
+    if len(matches) > 1:
+        console.print(f"[yellow]Multiple runs match '{run_id}'. Use the ID to be specific:[/yellow]")
+        print_run_list(matches)
+        conn.close()
+        raise typer.Exit(1)
+    row = matches[0]
     set_outcome(conn, row["id"], outcome)
     conn.close()
     console.print(f"[green]Tagged {row['id'][:8]} as {outcome}.[/green]")
@@ -160,6 +183,53 @@ def export(
         console.print(f"[green]Written to {out}[/green]")
     else:
         print(md)
+
+
+@app.command()
+def info():
+    """Show version, DB location, run counts, and command reference."""
+    from importlib.metadata import version as pkg_version, PackageNotFoundError
+    try:
+        v = pkg_version("agent-recorder")
+    except PackageNotFoundError:
+        v = "dev"
+
+    conn = get_connection()
+    init_db(conn)
+    total = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+    untagged = conn.execute("SELECT COUNT(*) FROM runs WHERE outcome='untagged'").fetchone()[0]
+    last_row = conn.execute("SELECT started_at FROM runs ORDER BY started_at DESC LIMIT 1").fetchone()
+    conn.close()
+
+    db_size = DB_PATH.stat().st_size // 1024 if DB_PATH.exists() else 0
+    last = last_row[0][:16] if last_row else "—"
+
+    from rich.table import Table as RTable
+    from rich.panel import Panel as RPanel
+
+    console.print(RPanel(
+        f"[bold cyan]Agent Flight Recorder[/bold cyan]  v{v}\n"
+        f"[dim]DB:[/dim] {DB_PATH}  [dim]({db_size} KB)[/dim]\n"
+        f"[dim]Runs:[/dim] {total} total, {untagged} untagged  [dim]| Last:[/dim] {last}",
+        title="afr info",
+    ))
+
+    cmds = RTable(show_header=False, box=None, padding=(0, 2))
+    cmds.add_column("cmd", style="cyan", no_wrap=True)
+    cmds.add_column("desc")
+    rows = [
+        ("afr ingest claude",           "Pull latest Claude Code sessions into DB"),
+        ("afr list [-d N]",             "List runs (optionally last N days)"),
+        ("afr search <query>",          "Full-text search across goals/summaries"),
+        ("afr show <id>",               "Full detail for a run"),
+        ("afr tag <id|query> <outcome>","Tag a run (shipped/blocked/abandoned/exploratory)"),
+        ("afr export <id> [-o file]",   "Export run as markdown"),
+        ("afr stats [-d N]",            "Token/tool/error summary"),
+        ("afr extract-skills",          "Cluster sessions → propose skills"),
+    ]
+    for cmd, desc in rows:
+        cmds.add_row(cmd, desc)
+    console.print(cmds)
 
 
 @app.command("extract-skills")

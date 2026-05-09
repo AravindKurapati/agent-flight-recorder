@@ -137,12 +137,18 @@ def list_runs(conn: sqlite3.Connection, days: Optional[int] = None) -> list:
 
 
 def search_runs(conn: sqlite3.Connection, query: str, days: Optional[int] = None) -> list:
-    sql = "SELECT runs.* FROM runs_fts JOIN runs ON runs_fts.id = runs.id WHERE runs_fts MATCH ?"
+    base = "SELECT runs.* FROM runs_fts JOIN runs ON runs_fts.id = runs.id WHERE runs_fts MATCH ?"
+    suffix = ""
     params: list = [query]
     if days:
-        sql += " AND runs.started_at >= datetime('now', ?)"
+        suffix = " AND runs.started_at >= datetime('now', ?)"
         params.append(f'-{days} days')
-    return conn.execute(sql, params).fetchall()
+    try:
+        return conn.execute(base + suffix, params).fetchall()
+    except sqlite3.OperationalError:
+        # FTS5 special chars (e.g. hyphens) — retry as a quoted phrase
+        params[0] = f'"{query}"'
+        return conn.execute(base + suffix, params).fetchall()
 
 
 def get_run(conn: sqlite3.Connection, run_id: str):
