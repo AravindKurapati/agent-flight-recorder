@@ -41,12 +41,26 @@ def parse_session_file(path: Path) -> ParsedSession:
         if not isinstance(content, list):
             content = []
 
-        if msg_type == "user":
+        if msg_type == "user" and not line.get("isMeta"):
+            # plain string content = actual user prompt
+            raw_content = message.get("content", "")
+            if isinstance(raw_content, str) and not user_goal:
+                text = raw_content.strip()
+                _skip = ("<local-command", "<command-name", "<system-reminder",
+                         "[Request interrupted", "Base directory for this skill:")
+                if text and not any(text.startswith(s) for s in _skip):
+                    user_goal = redact(text[:500])
+
             for block in content:
                 if not isinstance(block, dict):
                     continue
                 if block.get("type") == "text" and not user_goal:
-                    user_goal = redact(block.get("text", "")[:500])
+                    text = block.get("text", "").strip()
+                    # skip skill context dumps injected by Claude Code hooks
+                    if text and not text.startswith("Base directory for this skill:") \
+                            and not text.startswith("<system-reminder") \
+                            and not text.startswith("[Request interrupted"):
+                        user_goal = redact(text[:500])
                 elif block.get("type") == "tool_result":
                     tu_id = block.get("tool_use_id", "")
                     is_error = block.get("is_error", False)
@@ -121,11 +135,19 @@ def parse_session_file(path: Path) -> ParsedSession:
         if tu_id in pending_bash:
             shell_commands.append(pending_bash[tu_id])
 
+    # Sonnet pricing: $3/MTok in, $15/MTok out, $0.30/MTok cache_read, $3.75/MTok cache_write
+    cost_usd = (
+        tokens_in * 3.0 / 1_000_000
+        + tokens_out * 15.0 / 1_000_000
+        + cache_read * 0.30 / 1_000_000
+        + cache_write * 3.75 / 1_000_000
+    )
+
     return ParsedSession(
         run=Run(id=run_id, source="claude", project_path=project_path,
                 started_at=started_at, ended_at=ended_at, user_goal=user_goal,
                 final_summary=final_summary, tokens_in=tokens_in, tokens_out=tokens_out,
-                cache_read=cache_read, cache_write=cache_write),
+                cache_read=cache_read, cache_write=cache_write, cost_usd=cost_usd),
         tool_calls=tool_calls, shell_commands=shell_commands, files=files, errors=errors,
     )
 
