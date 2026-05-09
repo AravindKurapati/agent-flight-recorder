@@ -129,7 +129,7 @@ def export(
         f"**Date:** {row['started_at'][:16]} → {row['ended_at'][:16]}  ",
         f"**Outcome:** {row['outcome']}  ",
         f"**Tokens:** {row['tokens_in']:,} in / {row['tokens_out']:,} out | Cache read: {row['cache_read']:,}  ",
-        f"**Cost:** ${row['cost_usd']:.4f}",
+        f"**API-equiv:** ${row['cost_usd']:.4f} _(what this would cost on the API; Max/Pro subscribers pay a flat fee)_",
         "",
         "## Goal",
         row["user_goal"] or "_no goal recorded_",

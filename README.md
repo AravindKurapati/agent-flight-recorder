@@ -57,10 +57,11 @@ afr list --days 7
 ```
 
 ```
- ID       Source  Goal                                    Outcome    Tokens↑  Date
- 50c3f2a1 claude  Fix the Modal deployment error          untagged   1,842    2026-05-08
- 903b12cd claude  Add React component for dashboard       untagged     311    2026-05-08
- ad7e9f21 claude  Debug the authentication middleware     untagged     250    2026-05-07
+ ID         Source  Goal                                        Outcome       In      Out
+ 50c3f2a1   claude  Fix the Modal deployment error              untagged      1.8K    4.2K
+ 903b12cd   claude  Add React component for dashboard           untagged       311     847
+ ad7e9f21   claude  Debug the authentication middleware         untagged       250     612
+ 7e8a0bb9   claude  i wanna improve my agentic workflow skills  shipped      14.2K  189.4K
 ```
 
 ### Inspect a session
@@ -88,7 +89,7 @@ Shell Commands
 Errors
   • Error: missing secret huggingface-secret
 
-Tokens: 1,842 in / 4,201 out | Cache read: 920 | Cost: $0.0000
+Tokens: 1,842 in / 4,201 out | Cache read: 920 | API-equiv: $0.0643
 ```
 
 ### Search across all sessions
@@ -122,6 +123,31 @@ Top Tools
   Write: 201
   Glob: 94
   mcp__exa__web_search_exa: 87
+```
+
+### Export a session as markdown
+
+```bash
+afr export 50c3f2a1              # prints to stdout
+afr export 50c3f2a1 --out report.md   # writes to file
+```
+
+```markdown
+# Session: 50c3f2a1
+**Source:** claude
+**Date:** 2026-05-08T10:00 → 2026-05-08T10:14
+**Outcome:** untagged
+**Tokens:** 1,842 in / 4,201 out | Cache read: 920
+**API-equiv:** $0.0643
+
+## Goal
+Fix the Modal deployment error
+
+## Tool Calls
+- ✓ **Read** `{"file_path": "finsight.py"}`
+- ✗ **Bash** `{"command": "modal run finsight.py"}`
+- ✓ **Edit** `{"file_path": "finsight.py"}`
+- ✓ **Bash** `{"command": "modal deploy finsight.py"}`
 ```
 
 ### Tag a run with its outcome
@@ -158,11 +184,12 @@ It clusters sessions by keyword similarity, finds ones that ended in `shipped`, 
 |---------|-------------|
 | `afr ingest claude` | Parse `~/.claude/` sessions into the database |
 | `afr ingest codex` | Parse `~/.codex/` sessions into the database |
-| `afr list [--days N]` | Table of recent runs with outcome and token count |
+| `afr list [--days N]` | Table of recent runs with goals, outcomes, and token in/out |
 | `afr show <id>` | Full detail: tool calls, shell commands, errors, cost |
 | `afr search <query>` | Full-text search across run goals and summaries |
 | `afr stats [--days N]` | Outcome distribution, top tools, error counts |
 | `afr tag <id> <outcome>` | Label a run: shipped / blocked / abandoned / exploratory |
+| `afr export <id> [--out file]` | Export session as a markdown report |
 | `afr extract-skills` | Cluster sessions, propose SKILL.md candidates |
 
 `<id>` accepts the first 8 characters from `afr list` output.
