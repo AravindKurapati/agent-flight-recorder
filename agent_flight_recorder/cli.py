@@ -232,6 +232,13 @@ def info():
     console.print(cmds)
 
 
+@app.command("install-hooks")
+def install_hooks(apply: bool = typer.Option(False, "--apply", help="Write to ~/.claude/settings.json. Prints snippet otherwise.")):
+    """Print or install the Claude Code Stop hook config."""
+    from .hooks import install
+    typer.echo(install(apply=apply))
+
+
 @app.command("extract-skills")
 def extract_skills(
     min_runs: int = typer.Option(3, "--min-runs", help="Minimum sessions per cluster"),

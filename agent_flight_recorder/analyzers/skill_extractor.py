@@ -66,7 +66,7 @@ def cluster_runs(conn: sqlite3.Connection, min_runs: int = 3) -> list[dict]:
 
 
 def generate_skill_md(category: str, cluster: dict, conn: sqlite3.Connection) -> str:
-    tools_str = ", ".join(f"{n} ({c}Ã—)" for n, c in cluster["top_tools"])
+    tools_str = ", ".join(f"{n} ({c}×)" for n, c in cluster["top_tools"])
     shipped = [
         rid for rid in cluster["run_ids"]
         if conn.execute("SELECT outcome FROM runs WHERE id=?", (rid,)).fetchone()["outcome"] == "shipped"
