@@ -168,6 +168,59 @@ sqlite3 ~/.afr/afr.db "SELECT user_goal, outcome, tokens_in FROM runs ORDER BY s
 
 ---
 
+## Architecture
+
+```
+~/.claude/projects/**/*.jsonl    ~/.codex/sessions/**/*.jsonl
+            |                                |
+            v                                v
+    +---------------+                +---------------+
+    | Claude Adapter |                | Codex Adapter  |
+    +-------+-------+                +-------+-------+
+            |          Pydantic models       |
+            v          (Run, ToolCall, ...)   v
+    +------------------------------------------------+
+    |               Ingester + Redactor              |
+    |  (secret stripping before any DB write)        |
+    +------------------+-----------------------------+
+                       v
+              +----------------+
+              |  SQLite + FTS5 |  ~/.afr/afr.db
+              +--------+-------+
+                       v
+    +------------------------------------------+
+    |            Typer CLI (afr)               |
+    |  list . show . search . stats . export  |
+    |  tag . extract-skills                   |
+    +------------------------------------------+
+```
+
+---
+
+## Stack
+
+| Layer | Technology |
+|-------|------------|
+| Language | Python 3.11+ |
+| CLI framework | Typer + Rich |
+| Data models | Pydantic v2 |
+| Storage | SQLite with FTS5 full-text search |
+| Search | rapidfuzz (fuzzy keyword matching) |
+| Build | Hatchling |
+| Tests | pytest (45 tests, adapter/DB/ingester/redactor/stats/skill-extractor coverage) |
+
+---
+
+## Limitations
+
+- **Two agents only** - currently supports Claude Code and Codex; other agents (Cursor, Windsurf, etc.) would need new adapters.
+- **Manual outcome tagging** - you label runs as `shipped`/`blocked`/`abandoned`; there is no auto-detection of session outcome.
+- **No remote sync** - data stays in a local SQLite file; no multi-machine sync or team dashboards.
+- **Token counts depend on source** - Claude Code exposes tokens natively; Codex estimates may be less precise.
+- **Skill extraction is heuristic** - clustering uses keyword similarity (rapidfuzz), not semantic embeddings.
+
+---
+
 ## License
 
 MIT
