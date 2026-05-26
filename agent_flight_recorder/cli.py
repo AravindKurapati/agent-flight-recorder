@@ -8,7 +8,7 @@ if sys.platform == "win32":
 from pathlib import Path
 from typing import Optional
 import typer
-from .db import get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events, search_runs, set_outcome
+from .db import get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events, search_runs, set_outcome, get_latest_run
 from .ingester import ingest_claude, ingest_codex
 from .analyzers.stats import get_stats
 from .analyzers.skill_extractor import run_extraction
@@ -92,15 +92,44 @@ def _is_hex_id(s: str) -> bool:
 
 @app.command()
 def tag(
-    run_id: str = typer.Argument(..., help="Run ID/prefix, or search text to find by goal"),
-    outcome: str = typer.Argument(..., help="shipped | blocked | abandoned | exploratory"),
+    run_id: Optional[str] = typer.Argument(None, help="Run ID/prefix, or search text. Omit with --latest."),
+    outcome: Optional[str] = typer.Argument(None, help="shipped | blocked | abandoned | exploratory"),
+    latest: bool = typer.Option(False, "--latest", "-l", help="Tag the most recently active session in the current directory."),
+    any_cwd: bool = typer.Option(False, "--any-cwd", help="With --latest, do not restrict to the current directory."),
 ):
-    """Tag a run with an outcome. Accepts a hex run ID or a search query."""
-    if outcome not in _VALID_OUTCOMES:
+    """Tag a run with an outcome. Accepts a hex run ID, a search query, or --latest."""
+    # --latest shifts args: `afr tag --latest shipped` puts the outcome in run_id.
+    if latest and outcome is None and run_id is not None:
+        outcome, run_id = run_id, None
+
+    if outcome is None or outcome not in _VALID_OUTCOMES:
         console.print(f"[red]Invalid outcome. Choose: {', '.join(sorted(_VALID_OUTCOMES))}[/red]")
         raise typer.Exit(1)
+
     conn = get_connection()
     init_db(conn)
+
+    if latest:
+        cwd_basename = None if any_cwd else Path.cwd().name
+        row = get_latest_run(conn, cwd_basename)
+        if not row and cwd_basename:
+            conn.close()
+            console.print(f"[red]No sessions found for cwd '{cwd_basename}'. Try --any-cwd.[/red]")
+            raise typer.Exit(1)
+        if not row:
+            conn.close()
+            console.print("[red]No sessions found.[/red]")
+            raise typer.Exit(1)
+        set_outcome(conn, row["id"], outcome)
+        conn.close()
+        scope = "any cwd" if any_cwd else f"cwd '{cwd_basename}'"
+        console.print(f"[green]Tagged {row['id'][:8]} as {outcome}[/green] (latest in {scope}).")
+        return
+
+    if run_id is None:
+        console.print("[red]Missing run_id. Pass a run ID, a search query, or use --latest.[/red]")
+        conn.close()
+        raise typer.Exit(1)
 
     if _is_hex_id(run_id):
         row = conn.execute("SELECT id FROM runs WHERE id LIKE ?", (f"{run_id}%",)).fetchone()
