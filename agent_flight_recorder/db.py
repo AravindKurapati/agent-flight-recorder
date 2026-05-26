@@ -128,12 +128,16 @@ def upsert_session(conn: sqlite3.Connection, session: ParsedSession) -> bool:
     return True
 
 
-def list_runs(conn: sqlite3.Connection, days: Optional[int] = None) -> list:
+def list_runs(conn: sqlite3.Connection, days: Optional[int] = None, limit: Optional[int] = None) -> list:
     sql, params = "SELECT * FROM runs", []
     if days:
         sql += " WHERE started_at >= datetime('now', ?)"
         params = [f'-{days} days']
-    return conn.execute(sql + " ORDER BY started_at DESC", params).fetchall()
+    sql += " ORDER BY started_at DESC"
+    if limit is not None and limit > 0:
+        sql += " LIMIT ?"
+        params.append(limit)
+    return conn.execute(sql, params).fetchall()
 
 
 def search_runs(conn: sqlite3.Connection, query: str, days: Optional[int] = None) -> list:
