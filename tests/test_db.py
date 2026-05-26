@@ -48,6 +48,14 @@ def test_search_runs_fts(tmp_db):
     assert len(results) == 1
 
 
+def test_search_runs_orders_by_started_at_desc(tmp_db):
+    upsert_session(tmp_db, _make_session("run-old", started_at="2026-05-01T09:00:00Z", ended_at="2026-05-01T10:00:00Z"))
+    upsert_session(tmp_db, _make_session("run-mid", started_at="2026-05-03T09:00:00Z", ended_at="2026-05-03T10:00:00Z"))
+    upsert_session(tmp_db, _make_session("run-new", started_at="2026-05-05T09:00:00Z", ended_at="2026-05-05T10:00:00Z"))
+    results = search_runs(tmp_db, "Modal")
+    assert [r["id"] for r in results] == ["run-new", "run-mid", "run-old"]
+
+
 def test_set_outcome(tmp_db):
     upsert_session(tmp_db, _make_session("run-001"))
     set_outcome(tmp_db, "run-001", "shipped")

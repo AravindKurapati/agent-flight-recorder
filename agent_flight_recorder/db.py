@@ -143,12 +143,13 @@ def search_runs(conn: sqlite3.Connection, query: str, days: Optional[int] = None
     if days:
         suffix = " AND runs.started_at >= datetime('now', ?)"
         params.append(f'-{days} days')
+    order = " ORDER BY runs.started_at DESC"
     try:
-        return conn.execute(base + suffix, params).fetchall()
+        return conn.execute(base + suffix + order, params).fetchall()
     except sqlite3.OperationalError:
         # FTS5 special chars (e.g. hyphens) — retry as a quoted phrase
         params[0] = f'"{query}"'
-        return conn.execute(base + suffix, params).fetchall()
+        return conn.execute(base + suffix + order, params).fetchall()
 
 
 def get_run(conn: sqlite3.Connection, run_id: str):
