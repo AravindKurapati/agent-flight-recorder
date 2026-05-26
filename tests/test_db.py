@@ -1,7 +1,7 @@
 import sqlite3
 import pytest
 from pathlib import Path
-from agent_flight_recorder.db import get_connection, init_db, upsert_session, list_runs, search_runs, set_outcome, get_run_events, get_latest_run
+from agent_flight_recorder.db import get_connection, init_db, upsert_session, list_runs, search_runs, set_outcome, get_run_events, get_latest_run, bulk_set_outcome, count_runs_for_bulk
 from agent_flight_recorder.models import ParsedSession, Run, ToolCall, ShellCommand, FileEvent, Error
 
 
@@ -101,6 +101,56 @@ def test_set_outcome_empty_note_clears(tmp_db):
     set_outcome(tmp_db, "run-001", "shipped", note="")
     row = list_runs(tmp_db)[0]
     assert row["tag_note"] == ""
+
+
+def test_bulk_set_outcome_untagged_only(tmp_db):
+    upsert_session(tmp_db, _make_session("run-1"))
+    upsert_session(tmp_db, _make_session("run-2"))
+    upsert_session(tmp_db, _make_session("run-3"))
+    set_outcome(tmp_db, "run-2", "shipped")  # already tagged — must be skipped
+    n = bulk_set_outcome(tmp_db, "abandoned", untagged_only=True)
+    assert n == 2
+    outcomes = {r["id"]: r["outcome"] for r in list_runs(tmp_db)}
+    assert outcomes["run-1"] == "abandoned"
+    assert outcomes["run-3"] == "abandoned"
+    assert outcomes["run-2"] == "shipped"  # preserved
+
+
+def test_bulk_set_outcome_older_than(tmp_db):
+    upsert_session(tmp_db, _make_session("run-old", started_at="2020-01-01T00:00:00Z"))
+    upsert_session(tmp_db, _make_session("run-new", started_at="2099-01-01T00:00:00Z"))
+    n = bulk_set_outcome(tmp_db, "abandoned", older_than_days=30)
+    assert n == 1
+    outcomes = {r["id"]: r["outcome"] for r in list_runs(tmp_db)}
+    assert outcomes["run-old"] == "abandoned"
+    assert outcomes["run-new"] == "untagged"
+
+
+def test_bulk_set_outcome_combined_filters(tmp_db):
+    upsert_session(tmp_db, _make_session("run-old-untagged", started_at="2020-01-01T00:00:00Z"))
+    upsert_session(tmp_db, _make_session("run-old-tagged", started_at="2020-01-01T00:00:00Z"))
+    upsert_session(tmp_db, _make_session("run-new-untagged", started_at="2099-01-01T00:00:00Z"))
+    set_outcome(tmp_db, "run-old-tagged", "shipped")
+    n = bulk_set_outcome(tmp_db, "abandoned", untagged_only=True, older_than_days=30)
+    assert n == 1
+    outcomes = {r["id"]: r["outcome"] for r in list_runs(tmp_db)}
+    assert outcomes["run-old-untagged"] == "abandoned"
+    assert outcomes["run-old-tagged"] == "shipped"
+    assert outcomes["run-new-untagged"] == "untagged"
+
+
+def test_bulk_set_outcome_with_note(tmp_db):
+    upsert_session(tmp_db, _make_session("run-1"))
+    bulk_set_outcome(tmp_db, "abandoned", untagged_only=True, note="bulk cleanup 2026-05")
+    assert list_runs(tmp_db)[0]["tag_note"] == "bulk cleanup 2026-05"
+
+
+def test_count_runs_for_bulk_matches_update(tmp_db):
+    upsert_session(tmp_db, _make_session("run-1", started_at="2020-01-01T00:00:00Z"))
+    upsert_session(tmp_db, _make_session("run-2", started_at="2099-01-01T00:00:00Z"))
+    assert count_runs_for_bulk(tmp_db, untagged_only=True, older_than_days=30) == 1
+    assert count_runs_for_bulk(tmp_db, untagged_only=True) == 2
+    assert count_runs_for_bulk(tmp_db) == 2
 
 
 def test_init_db_idempotent_adds_tag_note_to_old_schema(tmp_path):
