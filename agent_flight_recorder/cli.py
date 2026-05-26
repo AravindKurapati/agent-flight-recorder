@@ -77,6 +77,25 @@ def search(
 
 
 @app.command()
+def recent(
+    n: int = typer.Argument(10, help="Number of most recent runs to show."),
+    days: Optional[int] = typer.Option(None, "--days", "-d", help="Restrict to the last N days."),
+):
+    """Show the most recently active runs (newest first)."""
+    if n <= 0:
+        console.print("[red]N must be positive.[/red]")
+        raise typer.Exit(1)
+    conn = get_connection()
+    init_db(conn)
+    runs = list_runs(conn, days=days, limit=n)
+    conn.close()
+    if not runs:
+        console.print("[yellow]No runs. Try `afr ingest claude`.[/yellow]")
+    else:
+        print_run_list(runs)
+
+
+@app.command()
 def stats(days: Optional[int] = typer.Option(None, "--days", "-d")):
     """Show session statistics."""
     conn = get_connection()

@@ -42,6 +42,21 @@ def test_list_runs_returns_inserted(tmp_db):
     assert len(runs) == 2
 
 
+def test_list_runs_respects_limit(tmp_db):
+    upsert_session(tmp_db, _make_session("run-1", started_at="2026-05-01T10:00:00Z"))
+    upsert_session(tmp_db, _make_session("run-2", started_at="2026-05-02T10:00:00Z"))
+    upsert_session(tmp_db, _make_session("run-3", started_at="2026-05-03T10:00:00Z"))
+    runs = list_runs(tmp_db, limit=2)
+    assert [r["id"] for r in runs] == ["run-3", "run-2"]
+
+
+def test_list_runs_limit_zero_returns_all(tmp_db):
+    # Defensive: limit<=0 should not apply LIMIT (matches existing days=None semantics).
+    upsert_session(tmp_db, _make_session("run-1"))
+    upsert_session(tmp_db, _make_session("run-2"))
+    assert len(list_runs(tmp_db, limit=0)) == 2
+
+
 def test_search_runs_fts(tmp_db):
     upsert_session(tmp_db, _make_session("run-001"))
     results = search_runs(tmp_db, "Modal")
