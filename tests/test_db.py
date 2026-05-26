@@ -78,6 +78,63 @@ def test_set_outcome(tmp_db):
     assert runs[0]["outcome"] == "shipped"
 
 
+def test_set_outcome_with_note(tmp_db):
+    upsert_session(tmp_db, _make_session("run-001"))
+    set_outcome(tmp_db, "run-001", "shipped", note="merged as PR #42")
+    row = list_runs(tmp_db)[0]
+    assert row["outcome"] == "shipped"
+    assert row["tag_note"] == "merged as PR #42"
+
+
+def test_set_outcome_no_note_preserves_existing(tmp_db):
+    upsert_session(tmp_db, _make_session("run-001"))
+    set_outcome(tmp_db, "run-001", "shipped", note="initial note")
+    set_outcome(tmp_db, "run-001", "blocked")  # no note arg — should keep the note
+    row = list_runs(tmp_db)[0]
+    assert row["outcome"] == "blocked"
+    assert row["tag_note"] == "initial note"
+
+
+def test_set_outcome_empty_note_clears(tmp_db):
+    upsert_session(tmp_db, _make_session("run-001"))
+    set_outcome(tmp_db, "run-001", "shipped", note="initial")
+    set_outcome(tmp_db, "run-001", "shipped", note="")
+    row = list_runs(tmp_db)[0]
+    assert row["tag_note"] == ""
+
+
+def test_init_db_idempotent_adds_tag_note_to_old_schema(tmp_path):
+    # Simulate a pre-tag_note DB by creating the table without the column, then re-init.
+    import sqlite3
+    db_path = tmp_path / "old.db"
+    raw = sqlite3.connect(str(db_path))
+    raw.row_factory = sqlite3.Row
+    raw.execute("""
+        CREATE TABLE runs (
+            id TEXT PRIMARY KEY, source TEXT NOT NULL,
+            project_path TEXT DEFAULT '', started_at TEXT DEFAULT '', ended_at TEXT DEFAULT '',
+            user_goal TEXT DEFAULT '', final_summary TEXT DEFAULT '',
+            outcome TEXT DEFAULT 'untagged', cost_usd REAL DEFAULT 0.0,
+            tokens_in INTEGER DEFAULT 0, tokens_out INTEGER DEFAULT 0,
+            cache_read INTEGER DEFAULT 0, cache_write INTEGER DEFAULT 0
+        )
+    """)
+    raw.execute("INSERT INTO runs (id, source) VALUES ('run-x', 'claude')")
+    raw.commit()
+    raw.close()
+
+    from agent_flight_recorder.db import init_db, get_connection
+    conn = get_connection(db_path)
+    init_db(conn)  # should add tag_note column without error
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)").fetchall()}
+    assert "tag_note" in cols
+    row = conn.execute("SELECT tag_note FROM runs WHERE id='run-x'").fetchone()
+    assert row["tag_note"] == ""
+    # Running init_db twice should still be safe.
+    init_db(conn)
+    conn.close()
+
+
 def test_get_run_events(tmp_db):
     upsert_session(tmp_db, _make_session("run-001"))
     events = get_run_events(tmp_db, "run-001")

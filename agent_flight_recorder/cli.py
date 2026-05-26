@@ -134,6 +134,7 @@ def tag(
     outcome: Optional[str] = typer.Argument(None, help="shipped | blocked | abandoned | exploratory"),
     latest: bool = typer.Option(False, "--latest", "-l", help="Tag the most recently active session in the current directory."),
     any_cwd: bool = typer.Option(False, "--any-cwd", help="With --latest, do not restrict to the current directory."),
+    note: Optional[str] = typer.Option(None, "--note", "-n", help="Free-text annotation stored alongside the outcome."),
 ):
     """Tag a run with an outcome. Accepts a hex run ID, a search query, or --latest."""
     # --latest shifts args: `afr tag --latest shipped` puts the outcome in run_id.
@@ -158,7 +159,7 @@ def tag(
             conn.close()
             console.print("[red]No sessions found.[/red]")
             raise typer.Exit(1)
-        set_outcome(conn, row["id"], outcome)
+        set_outcome(conn, row["id"], outcome, note=note)
         conn.close()
         scope = "any cwd" if any_cwd else f"cwd '{cwd_basename}'"
         console.print(f"[green]Tagged {row['id'][:8]} as {outcome}[/green] (latest in {scope}).")
@@ -175,7 +176,7 @@ def tag(
             console.print(f"[red]Run not found: {run_id}[/red]")
             conn.close()
             raise typer.Exit(1)
-        set_outcome(conn, row["id"], outcome)
+        set_outcome(conn, row["id"], outcome, note=note)
         conn.close()
         console.print(f"[green]Tagged {row['id'][:8]} as {outcome}.[/green]")
         return
@@ -194,7 +195,7 @@ def tag(
             raise typer.Exit(1)
     else:
         row = matches[0]
-    set_outcome(conn, row["id"], outcome)
+    set_outcome(conn, row["id"], outcome, note=note)
     conn.close()
     console.print(f"[green]Tagged {row['id'][:8]} as {outcome}.[/green]")
 
@@ -215,11 +216,19 @@ def export(
     events = get_run_events(conn, row["id"])
     conn.close()
 
+    try:
+        tag_note = row["tag_note"] or ""
+    except (IndexError, KeyError):
+        tag_note = ""
     lines = [
         f"# Session: {row['id'][:8]}",
         f"**Source:** {row['source']}  ",
         f"**Date:** {row['started_at'][:16]} → {row['ended_at'][:16]}  ",
         f"**Outcome:** {row['outcome']}  ",
+    ]
+    if tag_note:
+        lines.append(f"**Note:** {tag_note}  ")
+    lines += [
         f"**Tokens:** {row['tokens_in']:,} in / {row['tokens_out']:,} out | Cache read: {row['cache_read']:,}  ",
         f"**API-equiv:** ${row['cost_usd']:.4f} _(what this would cost on the API; Max/Pro subscribers pay a flat fee)_",
         "",

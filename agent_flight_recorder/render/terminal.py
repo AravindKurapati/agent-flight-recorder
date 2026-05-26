@@ -11,6 +11,14 @@ _OUTCOME_COLORS = {
 }
 
 
+def _row_get(row, key, default=""):
+    """sqlite3.Row.__getitem__ raises IndexError on missing keys; tolerate older DBs."""
+    try:
+        return row[key] or default
+    except (IndexError, KeyError):
+        return default
+
+
 def _fmt_tokens(n: int) -> str:
     if n >= 1_000_000:
         return f"{n/1_000_000:.1f}M"
@@ -50,9 +58,12 @@ def print_run_list(runs: list, numbered: bool = False) -> None:
 
 
 def print_run_detail(run, events: dict) -> None:
+    note = _row_get(run, "tag_note")
+    note_line = f"\n[italic]Note:[/italic] {note}" if note else ""
     console.print(Panel(
         f"[bold]{run['user_goal']}[/bold]\n"
         f"[dim]{run['source']} | {run['started_at'][:16]} → {run['ended_at'][:16]} | {run['outcome']}[/dim]"
+        f"{note_line}"
     ))
     if events["tool_calls"]:
         console.print("\n[bold]Tool Calls[/bold]")

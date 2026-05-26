@@ -16,6 +16,13 @@ def get_connection(path: Path = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    """Idempotent ADD COLUMN — SQLite has no ADD COLUMN IF NOT EXISTS pre-3.35."""
+    cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS runs (
@@ -31,7 +38,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             tokens_in INTEGER DEFAULT 0,
             tokens_out INTEGER DEFAULT 0,
             cache_read INTEGER DEFAULT 0,
-            cache_write INTEGER DEFAULT 0
+            cache_write INTEGER DEFAULT 0,
+            tag_note TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS tool_calls (
             id TEXT,
@@ -92,6 +100,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             VALUES (new.rowid, new.id, new.user_goal, new.final_summary);
         END;
     """)
+    # Migrations for existing DBs created before column-add features.
+    _ensure_column(conn, "runs", "tag_note", "TEXT DEFAULT ''")
     conn.commit()
 
 
@@ -101,7 +111,10 @@ def upsert_session(conn: sqlite3.Connection, session: ParsedSession) -> bool:
         return False
     r = session.run
     conn.execute(
-        "INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        """INSERT INTO runs (id, source, project_path, started_at, ended_at, user_goal,
+                             final_summary, outcome, cost_usd, tokens_in, tokens_out,
+                             cache_read, cache_write)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (r.id, r.source, r.project_path, r.started_at, r.ended_at, r.user_goal,
          r.final_summary, r.outcome, r.cost_usd, r.tokens_in, r.tokens_out, r.cache_read, r.cache_write)
     )
@@ -183,6 +196,9 @@ def get_run_events(conn: sqlite3.Connection, run_id: str) -> dict:
     }
 
 
-def set_outcome(conn: sqlite3.Connection, run_id: str, outcome: str) -> None:
-    conn.execute("UPDATE runs SET outcome=? WHERE id=?", (outcome, run_id))
+def set_outcome(conn: sqlite3.Connection, run_id: str, outcome: str, note: Optional[str] = None) -> None:
+    if note is None:
+        conn.execute("UPDATE runs SET outcome=? WHERE id=?", (outcome, run_id))
+    else:
+        conn.execute("UPDATE runs SET outcome=?, tag_note=? WHERE id=?", (outcome, note, run_id))
     conn.commit()

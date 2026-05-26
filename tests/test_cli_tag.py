@@ -181,6 +181,39 @@ def test_tag_picker_empty_input_cancels(tmp_db):
     assert "Cancelled" in result.output
 
 
+def test_tag_with_note_stores_note(tmp_db):
+    conn = get_connection(tmp_db)
+    upsert_session(conn, ParsedSession(run=Run(id="abcdef1234567890", source="claude", user_goal="g")))
+    conn.close()
+    result = CliRunner().invoke(app, ["tag", "abcdef12", "shipped", "--note", "merged as PR #42"])
+    assert result.exit_code == 0, result.output
+    conn = get_connection(tmp_db)
+    row = conn.execute("SELECT outcome, tag_note FROM runs WHERE id='abcdef1234567890'").fetchone()
+    conn.close()
+    assert row["outcome"] == "shipped"
+    assert row["tag_note"] == "merged as PR #42"
+
+
+def test_tag_latest_with_note(tmp_db, tmp_path):
+    from unittest.mock import patch
+    conn = get_connection(tmp_db)
+    upsert_session(conn, ParsedSession(run=Run(
+        id="run-latest", source="claude", project_path="myproj",
+        started_at="2026-05-02T09:00:00Z", ended_at="2026-05-02T10:00:00Z",
+    )))
+    conn.close()
+    cwd = tmp_path / "myproj"
+    cwd.mkdir()
+    with patch("agent_flight_recorder.cli.Path") as mock_path:
+        mock_path.cwd.return_value = cwd
+        result = CliRunner().invoke(app, ["tag", "--latest", "shipped", "-n", "shipped via PR"])
+    assert result.exit_code == 0, result.output
+    conn = get_connection(tmp_db)
+    row = conn.execute("SELECT tag_note FROM runs WHERE id='run-latest'").fetchone()
+    conn.close()
+    assert row["tag_note"] == "shipped via PR"
+
+
 def test_tag_single_match_no_picker(tmp_db):
     conn = get_connection(tmp_db)
     upsert_session(conn, ParsedSession(run=Run(
