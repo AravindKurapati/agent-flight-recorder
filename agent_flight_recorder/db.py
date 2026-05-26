@@ -196,6 +196,47 @@ def get_run_events(conn: sqlite3.Connection, run_id: str) -> dict:
     }
 
 
+def bulk_set_outcome(
+    conn: sqlite3.Connection,
+    outcome: str,
+    untagged_only: bool = False,
+    older_than_days: Optional[int] = None,
+    note: Optional[str] = None,
+) -> int:
+    """Apply an outcome to many runs. Returns the count of rows updated."""
+    conds, params = [], []
+    if untagged_only:
+        conds.append("outcome = 'untagged'")
+    if older_than_days is not None and older_than_days > 0:
+        conds.append("started_at != '' AND started_at < datetime('now', ?)")
+        params.append(f"-{older_than_days} days")
+    where = (" WHERE " + " AND ".join(conds)) if conds else ""
+    if note is None:
+        sql = f"UPDATE runs SET outcome = ?{where}"
+        cur = conn.execute(sql, [outcome] + params)
+    else:
+        sql = f"UPDATE runs SET outcome = ?, tag_note = ?{where}"
+        cur = conn.execute(sql, [outcome, note] + params)
+    conn.commit()
+    return cur.rowcount
+
+
+def count_runs_for_bulk(
+    conn: sqlite3.Connection,
+    untagged_only: bool = False,
+    older_than_days: Optional[int] = None,
+) -> int:
+    """Count rows that bulk_set_outcome would touch with the same filters."""
+    conds, params = [], []
+    if untagged_only:
+        conds.append("outcome = 'untagged'")
+    if older_than_days is not None and older_than_days > 0:
+        conds.append("started_at != '' AND started_at < datetime('now', ?)")
+        params.append(f"-{older_than_days} days")
+    where = (" WHERE " + " AND ".join(conds)) if conds else ""
+    return conn.execute(f"SELECT COUNT(*) AS n FROM runs{where}", params).fetchone()["n"]
+
+
 def set_outcome(conn: sqlite3.Connection, run_id: str, outcome: str, note: Optional[str] = None) -> None:
     if note is None:
         conn.execute("UPDATE runs SET outcome=? WHERE id=?", (outcome, run_id))

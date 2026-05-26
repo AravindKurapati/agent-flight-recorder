@@ -8,7 +8,7 @@ if sys.platform == "win32":
 from pathlib import Path
 from typing import Optional
 import typer
-from .db import get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events, search_runs, set_outcome, get_latest_run
+from .db import get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events, search_runs, set_outcome, get_latest_run, bulk_set_outcome, count_runs_for_bulk
 from .ingester import ingest_claude, ingest_codex
 from .analyzers.stats import get_stats
 from .analyzers.skill_extractor import run_extraction
@@ -153,6 +153,25 @@ def _is_hex_id(s: str) -> bool:
     return len(s) >= 6 and all(c in "0123456789abcdefABCDEF" for c in s)
 
 
+def _parse_duration_to_days(s: str) -> Optional[int]:
+    """Parse '30', '30d', '2w', '1m' into days. Returns None on invalid input."""
+    if not s:
+        return None
+    s = s.strip().lower()
+    if s.isdigit():
+        return int(s)
+    if len(s) < 2 or not s[:-1].isdigit():
+        return None
+    n, unit = int(s[:-1]), s[-1]
+    if unit == "d":
+        return n
+    if unit == "w":
+        return n * 7
+    if unit == "m":
+        return n * 30
+    return None
+
+
 def _pick_run_interactively(matches: list, query: str):
     """Prompt the user to pick from multiple matches. Returns the row or None if cancelled."""
     console.print(f"[yellow]Multiple runs match '{query}'. Pick one:[/yellow]")
@@ -174,15 +193,20 @@ def _pick_run_interactively(matches: list, query: str):
 
 @app.command()
 def tag(
-    run_id: Optional[str] = typer.Argument(None, help="Run ID/prefix, or search text. Omit with --latest."),
+    run_id: Optional[str] = typer.Argument(None, help="Run ID/prefix, or search text. Omit with --latest or bulk filters."),
     outcome: Optional[str] = typer.Argument(None, help="shipped | blocked | abandoned | exploratory"),
     latest: bool = typer.Option(False, "--latest", "-l", help="Tag the most recently active session in the current directory."),
     any_cwd: bool = typer.Option(False, "--any-cwd", help="With --latest, do not restrict to the current directory."),
     note: Optional[str] = typer.Option(None, "--note", "-n", help="Free-text annotation stored alongside the outcome."),
+    untagged: bool = typer.Option(False, "--untagged", help="Bulk mode: apply to runs currently tagged 'untagged'."),
+    older_than: Optional[str] = typer.Option(None, "--older-than", help="Bulk mode: restrict to runs older than e.g. '30d', '2w', '1m'."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the bulk confirmation prompt."),
 ):
-    """Tag a run with an outcome. Accepts a hex run ID, a search query, or --latest."""
-    # --latest shifts args: `afr tag --latest shipped` puts the outcome in run_id.
-    if latest and outcome is None and run_id is not None:
+    """Tag a run with an outcome. Accepts a hex run ID, a search query, --latest, or bulk filters."""
+    bulk = untagged or older_than is not None
+    # In bulk or --latest mode, the outcome comes in via the run_id positional (since the
+    # outcome positional is empty). Shift it.
+    if (latest or bulk) and outcome is None and run_id is not None:
         outcome, run_id = run_id, None
 
     if outcome is None or outcome not in _VALID_OUTCOMES:
@@ -191,6 +215,44 @@ def tag(
 
     conn = get_connection()
     init_db(conn)
+
+    if bulk:
+        if run_id is not None:
+            console.print("[red]Bulk mode does not accept a run ID. Drop it, or run individually without --untagged/--older-than.[/red]")
+            conn.close()
+            raise typer.Exit(1)
+        days = None
+        if older_than is not None:
+            days = _parse_duration_to_days(older_than)
+            if days is None or days <= 0:
+                console.print(f"[red]Invalid --older-than '{older_than}'. Use forms like '30d', '2w', '1m'.[/red]")
+                conn.close()
+                raise typer.Exit(1)
+        count = count_runs_for_bulk(conn, untagged_only=untagged, older_than_days=days)
+        if count == 0:
+            console.print("[yellow]No runs match the bulk filter — nothing to do.[/yellow]")
+            conn.close()
+            return
+        filters = []
+        if untagged:
+            filters.append("untagged")
+        if days is not None:
+            filters.append(f"older than {days}d")
+        scope = ", ".join(filters)
+        console.print(f"[yellow]This will tag {count} run{'s' if count != 1 else ''} ({scope}) as [bold]{outcome}[/bold].[/yellow]")
+        if not yes:
+            try:
+                ok = typer.confirm("Proceed?", default=False)
+            except (EOFError, typer.Abort):
+                ok = False
+            if not ok:
+                console.print("[yellow]Cancelled.[/yellow]")
+                conn.close()
+                raise typer.Exit(1)
+        n = bulk_set_outcome(conn, outcome, untagged_only=untagged, older_than_days=days, note=note)
+        conn.close()
+        console.print(f"[green]Tagged {n} run{'s' if n != 1 else ''} as {outcome}.[/green]")
+        return
 
     if latest:
         cwd_basename = None if any_cwd else Path.cwd().name

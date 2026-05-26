@@ -106,6 +106,101 @@ def test_tag_without_args_errors(tmp_db):
     assert result.exit_code != 0
 
 
+def _seed_for_bulk(db_path):
+    conn = get_connection(db_path)
+    upsert_session(conn, ParsedSession(run=Run(id="run-old-1", source="claude", user_goal="g",
+                                                started_at="2020-01-01T00:00:00Z", ended_at="2020-01-01T01:00:00Z")))
+    upsert_session(conn, ParsedSession(run=Run(id="run-old-2", source="claude", user_goal="g",
+                                                started_at="2020-01-02T00:00:00Z", ended_at="2020-01-02T01:00:00Z")))
+    upsert_session(conn, ParsedSession(run=Run(id="run-new-1", source="claude", user_goal="g",
+                                                started_at="2099-01-01T00:00:00Z", ended_at="2099-01-01T01:00:00Z")))
+    conn.close()
+
+
+def test_bulk_tag_requires_confirmation(tmp_db):
+    _seed_for_bulk(tmp_db)
+    # Decline the prompt — no rows should be updated.
+    result = CliRunner().invoke(app, ["tag", "--untagged", "abandoned"], input="n\n")
+    assert result.exit_code == 1
+    assert "will tag 3" in result.output
+    assert "Cancelled" in result.output
+    conn = get_connection(tmp_db)
+    outcomes = [r["outcome"] for r in conn.execute("SELECT outcome FROM runs").fetchall()]
+    conn.close()
+    assert all(o == "untagged" for o in outcomes)
+
+
+def test_bulk_tag_with_yes_skips_prompt(tmp_db):
+    _seed_for_bulk(tmp_db)
+    result = CliRunner().invoke(app, ["tag", "--untagged", "abandoned", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "Tagged 3" in result.output
+    conn = get_connection(tmp_db)
+    outcomes = [r["outcome"] for r in conn.execute("SELECT outcome FROM runs").fetchall()]
+    conn.close()
+    assert all(o == "abandoned" for o in outcomes)
+
+
+def test_bulk_tag_older_than(tmp_db):
+    _seed_for_bulk(tmp_db)
+    result = CliRunner().invoke(app, ["tag", "--untagged", "--older-than", "30d", "abandoned", "-y"])
+    assert result.exit_code == 0, result.output
+    assert "Tagged 2" in result.output
+    conn = get_connection(tmp_db)
+    outcomes = {r["id"]: r["outcome"] for r in conn.execute("SELECT id, outcome FROM runs").fetchall()}
+    conn.close()
+    assert outcomes["run-old-1"] == "abandoned"
+    assert outcomes["run-old-2"] == "abandoned"
+    assert outcomes["run-new-1"] == "untagged"
+
+
+def test_bulk_tag_no_matches(tmp_db):
+    result = CliRunner().invoke(app, ["tag", "--untagged", "abandoned", "-y"])
+    assert result.exit_code == 0
+    assert "nothing to do" in result.output
+
+
+def test_bulk_tag_rejects_run_id(tmp_db):
+    _seed_for_bulk(tmp_db)
+    result = CliRunner().invoke(app, ["tag", "deadbeef", "--untagged", "abandoned", "-y"])
+    assert result.exit_code == 1
+    assert "does not accept a run ID" in result.output
+
+
+def test_bulk_tag_rejects_invalid_duration(tmp_db):
+    _seed_for_bulk(tmp_db)
+    result = CliRunner().invoke(app, ["tag", "--untagged", "--older-than", "bananas", "abandoned", "-y"])
+    assert result.exit_code == 1
+    assert "Invalid --older-than" in result.output
+
+
+def test_bulk_tag_with_note(tmp_db):
+    _seed_for_bulk(tmp_db)
+    result = CliRunner().invoke(app, ["tag", "--untagged", "abandoned", "-y", "--note", "auto-cleanup"])
+    assert result.exit_code == 0, result.output
+    conn = get_connection(tmp_db)
+    notes = [r["tag_note"] for r in conn.execute("SELECT tag_note FROM runs").fetchall()]
+    conn.close()
+    assert all(n == "auto-cleanup" for n in notes)
+
+
+def test_bulk_tag_duration_units(tmp_db):
+    # Make all three runs ancient so any unit picks them up.
+    conn = get_connection(tmp_db)
+    upsert_session(conn, ParsedSession(run=Run(id="run-x", source="claude", user_goal="g",
+                                                started_at="2010-01-01T00:00:00Z", ended_at="2010-01-01T01:00:00Z")))
+    conn.close()
+    for spec, expected_label in [("7d", "7d"), ("1w", "7d"), ("1m", "30d")]:
+        # Reset
+        conn = get_connection(tmp_db)
+        conn.execute("UPDATE runs SET outcome='untagged'")
+        conn.commit()
+        conn.close()
+        result = CliRunner().invoke(app, ["tag", "--untagged", "--older-than", spec, "abandoned", "-y"])
+        assert result.exit_code == 0, result.output
+        assert "Tagged 1" in result.output
+
+
 def _seed_two_matching(db_path):
     conn = get_connection(db_path)
     upsert_session(conn, ParsedSession(run=Run(
