@@ -90,6 +90,25 @@ def _is_hex_id(s: str) -> bool:
     return len(s) >= 6 and all(c in "0123456789abcdefABCDEF" for c in s)
 
 
+def _pick_run_interactively(matches: list, query: str):
+    """Prompt the user to pick from multiple matches. Returns the row or None if cancelled."""
+    console.print(f"[yellow]Multiple runs match '{query}'. Pick one:[/yellow]")
+    print_run_list(matches, numbered=True)
+    while True:
+        try:
+            choice = typer.prompt(f"Select [1-{len(matches)}, q to cancel]", default="q", show_default=False)
+        except (EOFError, typer.Abort):
+            return None
+        choice = (choice or "").strip().lower()
+        if choice in ("q", "quit", "exit", ""):
+            return None
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx <= len(matches):
+                return matches[idx - 1]
+        console.print(f"[red]Invalid choice. Enter 1-{len(matches)} or q.[/red]")
+
+
 @app.command()
 def tag(
     run_id: Optional[str] = typer.Argument(None, help="Run ID/prefix, or search text. Omit with --latest."),
@@ -149,11 +168,13 @@ def tag(
         conn.close()
         raise typer.Exit(1)
     if len(matches) > 1:
-        console.print(f"[yellow]Multiple runs match '{run_id}'. Use the ID to be specific:[/yellow]")
-        print_run_list(matches)
-        conn.close()
-        raise typer.Exit(1)
-    row = matches[0]
+        row = _pick_run_interactively(matches, run_id)
+        if row is None:
+            console.print("[yellow]Cancelled.[/yellow]")
+            conn.close()
+            raise typer.Exit(1)
+    else:
+        row = matches[0]
     set_outcome(conn, row["id"], outcome)
     conn.close()
     console.print(f"[green]Tagged {row['id'][:8]} as {outcome}.[/green]")

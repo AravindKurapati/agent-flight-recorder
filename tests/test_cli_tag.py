@@ -104,3 +104,89 @@ def test_tag_rejects_invalid_outcome(tmp_db):
 def test_tag_without_args_errors(tmp_db):
     result = CliRunner().invoke(app, ["tag"])
     assert result.exit_code != 0
+
+
+def _seed_two_matching(db_path):
+    conn = get_connection(db_path)
+    upsert_session(conn, ParsedSession(run=Run(
+        id="run-aaaa-1111", source="claude", user_goal="medium effort refactor",
+        started_at="2026-05-01T10:00:00Z", ended_at="2026-05-01T11:00:00Z",
+    )))
+    upsert_session(conn, ParsedSession(run=Run(
+        id="run-bbbb-2222", source="claude", user_goal="medium priority bug",
+        started_at="2026-05-02T10:00:00Z", ended_at="2026-05-02T11:00:00Z",
+    )))
+    conn.close()
+
+
+def _tagged_outcomes(db_path):
+    conn = get_connection(db_path)
+    out = {r["id"]: r["outcome"] for r in list_runs(conn)}
+    conn.close()
+    return out
+
+
+def test_tag_picker_selects_first_match(tmp_db):
+    _seed_two_matching(tmp_db)
+    result = CliRunner().invoke(app, ["tag", "medium", "shipped"], input="1\n")
+    assert result.exit_code == 0, result.output
+    assert "Pick one" in result.output
+    outcomes = _tagged_outcomes(tmp_db)
+    # Exactly one tagged — index 1 maps to whichever row the picker listed first.
+    assert sum(1 for v in outcomes.values() if v == "shipped") == 1
+    assert sum(1 for v in outcomes.values() if v == "untagged") == 1
+
+
+def test_tag_picker_selects_second_match(tmp_db):
+    _seed_two_matching(tmp_db)
+    result1 = CliRunner().invoke(app, ["tag", "medium", "shipped"], input="1\n")
+    first_pick = next(rid for rid, o in _tagged_outcomes(tmp_db).items() if o == "shipped")
+
+    # Reset and pick #2 this time — must be the other run.
+    conn = get_connection(tmp_db)
+    conn.execute("UPDATE runs SET outcome='untagged'")
+    conn.commit()
+    conn.close()
+
+    result2 = CliRunner().invoke(app, ["tag", "medium", "shipped"], input="2\n")
+    assert result2.exit_code == 0, result2.output
+    second_pick = next(rid for rid, o in _tagged_outcomes(tmp_db).items() if o == "shipped")
+    assert second_pick != first_pick
+
+
+def test_tag_picker_quit_cancels(tmp_db):
+    _seed_two_matching(tmp_db)
+    result = CliRunner().invoke(app, ["tag", "medium", "shipped"], input="q\n")
+    assert result.exit_code == 1
+    assert "Cancelled" in result.output
+    conn = get_connection(tmp_db)
+    runs = {r["id"]: r["outcome"] for r in list_runs(conn)}
+    conn.close()
+    assert all(o == "untagged" for o in runs.values())
+
+
+def test_tag_picker_rejects_invalid_then_accepts(tmp_db):
+    _seed_two_matching(tmp_db)
+    # First "9" is out of range, then "1" picks the first match.
+    result = CliRunner().invoke(app, ["tag", "medium", "shipped"], input="9\n1\n")
+    assert result.exit_code == 0, result.output
+    assert "Invalid choice" in result.output
+
+
+def test_tag_picker_empty_input_cancels(tmp_db):
+    _seed_two_matching(tmp_db)
+    # No input → EOF → cancel without crashing.
+    result = CliRunner().invoke(app, ["tag", "medium", "shipped"], input="")
+    assert result.exit_code == 1
+    assert "Cancelled" in result.output
+
+
+def test_tag_single_match_no_picker(tmp_db):
+    conn = get_connection(tmp_db)
+    upsert_session(conn, ParsedSession(run=Run(
+        id="run-solo-9999", source="claude", user_goal="unique-marker-xyz",
+    )))
+    conn.close()
+    result = CliRunner().invoke(app, ["tag", "unique-marker-xyz", "shipped"])
+    assert result.exit_code == 0, result.output
+    assert "Pick one" not in result.output
