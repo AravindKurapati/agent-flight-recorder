@@ -155,6 +155,20 @@ def get_run(conn: sqlite3.Connection, run_id: str):
     return conn.execute("SELECT * FROM runs WHERE id LIKE ?", (f"{run_id}%",)).fetchone()
 
 
+def get_latest_run(conn: sqlite3.Connection, cwd_match: Optional[str] = None):
+    """Return most recently active run, optionally filtered by project_path containing cwd_match.
+
+    Orders by ended_at DESC with started_at as tiebreaker — last-active wins over last-started.
+    """
+    sql = "SELECT * FROM runs"
+    params: list = []
+    if cwd_match:
+        sql += " WHERE project_path LIKE ?"
+        params.append(f"%{cwd_match}%")
+    sql += " ORDER BY COALESCE(NULLIF(ended_at,''), started_at) DESC, started_at DESC LIMIT 1"
+    return conn.execute(sql, params).fetchone()
+
+
 def get_run_events(conn: sqlite3.Connection, run_id: str) -> dict:
     return {
         "tool_calls": conn.execute("SELECT * FROM tool_calls WHERE run_id=? ORDER BY timestamp", (run_id,)).fetchall(),
