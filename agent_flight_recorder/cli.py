@@ -12,6 +12,7 @@ from .db import get_connection, init_db, DB_PATH, list_runs, get_run, get_run_ev
 from .ingester import ingest_claude, ingest_codex
 from .analyzers.stats import get_stats
 from .analyzers.skill_extractor import run_extraction
+from .analyzers.outcome_suggester import suggest_outcome
 from .render.terminal import console, print_run_list, print_run_detail, print_stats
 
 app = typer.Typer(name="afr", help="Agent Flight Recorder — local AI session observability", add_completion=False)
@@ -74,6 +75,49 @@ def search(
         console.print(f"[yellow]No results for: {query}[/yellow]")
     else:
         print_run_list(runs)
+
+
+@app.command()
+def suggest(
+    run_id: Optional[str] = typer.Argument(None, help="Run ID/prefix. Omit with --latest."),
+    latest: bool = typer.Option(False, "--latest", "-l", help="Suggest for the most recently active session in the current directory."),
+    any_cwd: bool = typer.Option(False, "--any-cwd", help="With --latest, do not restrict to the current directory."),
+):
+    """Suggest an outcome based on session signals (does not apply it)."""
+    conn = get_connection()
+    init_db(conn)
+
+    if latest:
+        cwd_basename = None if any_cwd else Path.cwd().name
+        row = get_latest_run(conn, cwd_basename)
+        if not row:
+            conn.close()
+            scope = "any cwd" if any_cwd else f"cwd '{cwd_basename}'"
+            console.print(f"[red]No sessions found in {scope}.[/red]")
+            raise typer.Exit(1)
+    elif run_id:
+        row = conn.execute("SELECT * FROM runs WHERE id LIKE ?", (f"{run_id}%",)).fetchone()
+        if not row:
+            console.print(f"[red]Run not found: {run_id}[/red]")
+            conn.close()
+            raise typer.Exit(1)
+    else:
+        console.print("[red]Pass a run ID or --latest.[/red]")
+        conn.close()
+        raise typer.Exit(1)
+
+    events = get_run_events(conn, row["id"])
+    conn.close()
+    rid = row["id"][:8]
+
+    suggestion = suggest_outcome(events)
+    if suggestion is None:
+        console.print(f"[dim]{rid}: no strong signal — outcome unclear.[/dim]")
+        return
+    outcome, reason = suggestion
+    color = {"shipped": "green", "blocked": "red", "exploratory": "blue", "abandoned": "yellow"}.get(outcome, "white")
+    console.print(f"[{color}]{rid}: suggest [bold]{outcome}[/bold] — {reason}[/{color}]")
+    console.print(f"[dim]Apply with:[/dim] afr tag {rid} {outcome}")
 
 
 @app.command()
