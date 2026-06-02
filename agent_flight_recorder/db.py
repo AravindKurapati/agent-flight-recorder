@@ -88,6 +88,10 @@ def init_db(conn: sqlite3.Connection) -> None:
             confidence REAL DEFAULT 0.0,
             approved INTEGER DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
         CREATE VIRTUAL TABLE IF NOT EXISTS runs_fts USING fts5(
             id UNINDEXED,
             user_goal,
@@ -103,6 +107,24 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Migrations for existing DBs created before column-add features.
     _ensure_column(conn, "runs", "tag_note", "TEXT DEFAULT ''")
     conn.commit()
+
+
+def get_config(conn: sqlite3.Connection, key: str, default=None):
+    row = conn.execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_config(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO config(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, str(value)),
+    )
+    conn.commit()
+
+
+def get_all_config(conn: sqlite3.Connection) -> dict:
+    return {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM config").fetchall()}
 
 
 def upsert_session(conn: sqlite3.Connection, session: ParsedSession) -> bool:
