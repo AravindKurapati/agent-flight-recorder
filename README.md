@@ -85,6 +85,19 @@ afr stats --days 30
 
 ![alt text](docs/images/image-5.png)
 
+### See your 5-hour usage windows
+
+```bash
+afr config set weekly-reset "Wed 00:00"      # when your weekly cap resets
+afr config set timezone "America/New_York"   # your display timezone (IANA)
+afr windows
+```
+
+`afr windows` reconstructs the Anthropic 5-hour usage windows you actually
+opened (from recorded run timestamps) and shows how many fresh windows fit
+before your weekly reset. This is the *time/window* view; for the token-budget
+forecast, use claude-burnrate with `/usage`.
+
 ### Export a session as markdown
 
 ```bash
