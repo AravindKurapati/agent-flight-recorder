@@ -102,3 +102,21 @@ def print_stats(stats: dict) -> None:
         console.print("\n[bold]Top Tools[/bold]")
         for tool, count in stats["top_tools"]:
             console.print(f"  {tool}: {count}")
+
+
+def print_windows(report: dict) -> None:
+    console.print(Panel("[bold]5-hour windows[/bold]"))
+    console.print(f"  Today:        [bold]{report['today']}[/bold] used")
+    if report["reset_configured"]:
+        console.print(f"  This week:    [bold]{report['week']}[/bold] used "
+                      f"[dim](since weekly reset, {report['tz_label']})[/dim]")
+        av = report["available"]
+        if av["active_remaining_h"] > 0:
+            console.print(f"  Active:       [cyan]{av['active_remaining_h']:.1f}h[/cyan] left in current window")
+        reset_str = report["next_reset_local"].strftime("%a %b %d, %I:%M%p").replace(" 0", " ")
+        console.print(f"  Available:    [green]~{av['full_windows']}[/green] more full windows "
+                      f"before reset ({reset_str} {report['tz_label']}) + {av['tail_h']:.1f}h tail")
+    else:
+        console.print("  This week:    [dim]set your weekly reset to see this[/dim]")
+        console.print('  [yellow]Tip:[/yellow] run [bold]afr config set weekly-reset "Wed 00:00"[/bold] '
+                      'and [bold]afr config set timezone "America/New_York"[/bold]')

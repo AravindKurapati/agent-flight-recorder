@@ -8,16 +8,76 @@ if sys.platform == "win32":
 from pathlib import Path
 from typing import Optional
 import typer
-from .db import get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events, search_runs, set_outcome, get_latest_run, bulk_set_outcome, count_runs_for_bulk
+from .db import (get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events,
+                 search_runs, set_outcome, get_latest_run, bulk_set_outcome,
+                 count_runs_for_bulk, get_config, set_config, get_all_config)
 from .ingester import ingest_claude, ingest_codex
 from .analyzers.stats import get_stats
 from .analyzers.skill_extractor import run_extraction
 from .analyzers.outcome_suggester import suggest_outcome
-from .render.terminal import console, print_run_list, print_run_detail, print_stats
+from .analyzers.windows import build_report, parse_weekly_reset
+from .render.terminal import console, print_run_list, print_run_detail, print_stats, print_windows
 
 app = typer.Typer(name="afr", help="Agent Flight Recorder — local AI session observability", add_completion=False)
 
+config_app = typer.Typer(help="Manage afr configuration (weekly reset, timezone).")
+app.add_typer(config_app, name="config")
+
 _VALID_OUTCOMES = {"shipped", "blocked", "abandoned", "exploratory"}
+_CONFIG_KEYS = {"weekly-reset", "timezone"}
+
+
+@app.command()
+def windows():
+    """Show 5-hour usage windows used today/this week and how many remain before reset."""
+    from datetime import datetime, timezone
+    from . import db as _db
+    conn = get_connection(_db.DB_PATH)
+    init_db(conn)
+    rows = conn.execute("SELECT started_at FROM runs WHERE started_at != ''").fetchall()
+    cfg = get_all_config(conn)
+    conn.close()
+    report = build_report([r["started_at"] for r in rows], cfg, datetime.now(timezone.utc))
+    print_windows(report)
+
+
+@config_app.command("set")
+def config_set(key: str = typer.Argument(...), value: str = typer.Argument(...)):
+    """Set a config value. Keys: weekly-reset '<Weekday> HH:MM', timezone <IANA>."""
+    from . import db as _db
+    if key not in _CONFIG_KEYS:
+        console.print(f"[red]Unknown key '{key}'. Valid: {', '.join(sorted(_CONFIG_KEYS))}[/red]")
+        raise typer.Exit(1)
+    conn = get_connection(_db.DB_PATH)
+    init_db(conn)
+    if key == "weekly-reset":
+        try:
+            weekday, (hh, mm) = parse_weekly_reset(value)
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            conn.close()
+            raise typer.Exit(1)
+        set_config(conn, "weekly_reset_weekday", str(weekday))
+        set_config(conn, "weekly_reset_time", f"{hh:02d}:{mm:02d}")
+    else:  # timezone
+        set_config(conn, "timezone", value)
+    conn.close()
+    console.print(f"[green]Set {key} = {value}[/green]")
+
+
+@config_app.command("show")
+def config_show():
+    """Print current afr configuration."""
+    from . import db as _db
+    conn = get_connection(_db.DB_PATH)
+    init_db(conn)
+    cfg = get_all_config(conn)
+    conn.close()
+    if not cfg:
+        console.print("[yellow]No config set. Try: afr config set weekly-reset \"Wed 00:00\"[/yellow]")
+        return
+    for k, v in cfg.items():
+        console.print(f"  {k}: [bold]{v}[/bold]")
 
 
 @app.command()

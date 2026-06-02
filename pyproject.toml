@@ -29,6 +29,7 @@ dependencies = [
     "typer[all]>=0.12",
     "pydantic>=2",
     "rapidfuzz>=3",
+    "tzdata; sys_platform == 'win32'",
 ]
 
 [project.urls]
