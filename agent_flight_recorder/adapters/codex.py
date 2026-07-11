@@ -21,7 +21,7 @@ def parse_session_file(path: Path) -> ParsedSession:
     lines = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
     session_id = path.stem
-    project_path = user_goal = final_summary = started_at = ended_at = ""
+    project_path = cwd = user_goal = final_summary = started_at = ended_at = ""
     tokens_in = tokens_out = 0
     tool_calls: list[ToolCall] = []
     shell_commands: list[ShellCommand] = []
@@ -41,6 +41,7 @@ def parse_session_file(path: Path) -> ParsedSession:
         if event_type == "session_meta":
             session_id = line.get("session_id", session_id)
             project_path = line.get("project_path", "")
+            cwd = line.get("cwd", cwd)
 
         elif event_type == "message":
             role = line.get("role", "")
@@ -125,7 +126,7 @@ def parse_session_file(path: Path) -> ParsedSession:
             shell_commands.append(sc)
 
     return ParsedSession(
-        run=Run(id=session_id, source="codex", project_path=project_path,
+        run=Run(id=session_id, source="codex", project_path=project_path, cwd=cwd,
                 started_at=started_at, ended_at=ended_at, user_goal=user_goal,
                 final_summary=final_summary, tokens_in=tokens_in, tokens_out=tokens_out),
         tool_calls=tool_calls, shell_commands=shell_commands, files=files, errors=errors,

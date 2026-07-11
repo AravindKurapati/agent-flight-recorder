@@ -1,0 +1,14 @@
+CLAUDE.md
+AGENTS.md
+
+# Python build/runtime artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Local afr database (never commit recorded sessions)
+afr.db
+*.db

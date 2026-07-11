@@ -45,6 +45,8 @@ class Run(BaseModel):
     id: str
     source: Literal["claude", "codex"]
     project_path: str = ""
+    cwd: str = ""
+    git_branch: str = ""
     started_at: str = ""
     ended_at: str = ""
     user_goal: str = ""

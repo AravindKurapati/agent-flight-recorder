@@ -60,9 +60,15 @@ def print_run_list(runs: list, numbered: bool = False) -> None:
 def print_run_detail(run, events: dict) -> None:
     note = _row_get(run, "tag_note")
     note_line = f"\n[italic]Note:[/italic] {note}" if note else ""
+    cwd = _row_get(run, "cwd")
+    branch = _row_get(run, "git_branch")
+    loc = cwd + (f" ({branch})" if branch else "") if cwd else (branch or "")
+    loc_line = f"\n[dim]{loc}[/dim]" if loc else ""
     console.print(Panel(
         f"[bold]{run['user_goal']}[/bold]\n"
+        f"[dim]{run['id']}[/dim]\n"
         f"[dim]{run['source']} | {run['started_at'][:16]} → {run['ended_at'][:16]} | {run['outcome']}[/dim]"
+        f"{loc_line}"
         f"{note_line}"
     ))
     if events["tool_calls"]:

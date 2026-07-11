@@ -17,6 +17,14 @@ def test_source_is_claude(session):
     assert session.run.source == "claude"
 
 
+def test_cwd_extracted(session):
+    assert session.run.cwd == "/home/user/finsight"
+
+
+def test_git_branch_extracted(session):
+    assert session.run.git_branch == "main"
+
+
 def test_user_goal_extracted(session):
     assert "Modal" in session.run.user_goal
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-recorder"
-version = "0.1.1"
+version = "0.2.0"
 description = "Local-first CLI that records every Claude Code and Codex session into a searchable SQLite database"
 readme = "README.md"
 license = { text = "MIT" }

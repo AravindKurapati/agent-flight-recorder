@@ -29,6 +29,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             id TEXT PRIMARY KEY,
             source TEXT NOT NULL,
             project_path TEXT DEFAULT '',
+            cwd TEXT DEFAULT '',
+            git_branch TEXT DEFAULT '',
             started_at TEXT DEFAULT '',
             ended_at TEXT DEFAULT '',
             user_goal TEXT DEFAULT '',
@@ -106,6 +108,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     """)
     # Migrations for existing DBs created before column-add features.
     _ensure_column(conn, "runs", "tag_note", "TEXT DEFAULT ''")
+    _ensure_column(conn, "runs", "cwd", "TEXT DEFAULT ''")
+    _ensure_column(conn, "runs", "git_branch", "TEXT DEFAULT ''")
     conn.commit()
 
 
@@ -128,16 +132,28 @@ def get_all_config(conn: sqlite3.Connection) -> dict:
 
 
 def upsert_session(conn: sqlite3.Connection, session: ParsedSession) -> bool:
-    existing = conn.execute("SELECT id FROM runs WHERE id = ?", (session.run.id,)).fetchone()
+    existing = conn.execute(
+        "SELECT cwd, git_branch FROM runs WHERE id = ?", (session.run.id,)
+    ).fetchone()
     if existing:
+        # Backfill location fields onto rows recorded before 0.2.0 without clobbering
+        # anything already present. Lets `afr resume` work on pre-existing sessions
+        # after a plain re-ingest.
+        if (not existing["cwd"] and session.run.cwd) or (not existing["git_branch"] and session.run.git_branch):
+            conn.execute(
+                "UPDATE runs SET cwd = CASE WHEN cwd = '' THEN ? ELSE cwd END, "
+                "git_branch = CASE WHEN git_branch = '' THEN ? ELSE git_branch END WHERE id = ?",
+                (session.run.cwd, session.run.git_branch, session.run.id),
+            )
+            conn.commit()
         return False
     r = session.run
     conn.execute(
-        """INSERT INTO runs (id, source, project_path, started_at, ended_at, user_goal,
-                             final_summary, outcome, cost_usd, tokens_in, tokens_out,
+        """INSERT INTO runs (id, source, project_path, cwd, git_branch, started_at, ended_at,
+                             user_goal, final_summary, outcome, cost_usd, tokens_in, tokens_out,
                              cache_read, cache_write)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (r.id, r.source, r.project_path, r.started_at, r.ended_at, r.user_goal,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (r.id, r.source, r.project_path, r.cwd, r.git_branch, r.started_at, r.ended_at, r.user_goal,
          r.final_summary, r.outcome, r.cost_usd, r.tokens_in, r.tokens_out, r.cache_read, r.cache_write)
     )
     for tc in session.tool_calls:
@@ -193,6 +209,21 @@ def search_runs(conn: sqlite3.Connection, query: str, days: Optional[int] = None
 
 def get_run(conn: sqlite3.Connection, run_id: str):
     return conn.execute("SELECT * FROM runs WHERE id LIKE ?", (f"{run_id}%",)).fetchone()
+
+
+def resolve_runs_by_prefix(conn: sqlite3.Connection, prefix: str) -> list:
+    """Return every run whose id starts with `prefix`, most-recent first.
+
+    Unlike get_run (which arbitrarily returns the first match), this exposes
+    ambiguity so callers can refuse to act on an under-specified prefix.
+    LIKE wildcards in the prefix are escaped so a literal id fragment matches.
+    """
+    escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return conn.execute(
+        "SELECT * FROM runs WHERE id LIKE ? ESCAPE '\\' "
+        "ORDER BY COALESCE(NULLIF(ended_at,''), started_at) DESC, started_at DESC",
+        (f"{escaped}%",),
+    ).fetchall()
 
 
 def get_latest_run(conn: sqlite3.Connection, cwd_match: Optional[str] = None):

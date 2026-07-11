@@ -10,7 +10,8 @@ from typing import Optional
 import typer
 from .db import (get_connection, init_db, DB_PATH, list_runs, get_run, get_run_events,
                  search_runs, set_outcome, get_latest_run, bulk_set_outcome,
-                 count_runs_for_bulk, get_config, set_config, get_all_config)
+                 count_runs_for_bulk, get_config, set_config, get_all_config,
+                 resolve_runs_by_prefix)
 from .ingester import ingest_claude, ingest_codex
 from .analyzers.stats import get_stats
 from .analyzers.skill_extractor import run_extraction
@@ -119,6 +120,59 @@ def show(run_id: str = typer.Argument(..., help="Run ID or prefix")):
     events = get_run_events(conn, row["id"])
     conn.close()
     print_run_detail(row, events)
+
+
+@app.command()
+def resume(
+    run_id: str = typer.Argument(..., help="Run ID or prefix, as shown by `afr list`/`afr search`."),
+    run: bool = typer.Option(False, "--run", help="Launch the resume command now instead of just printing it."),
+):
+    """Print (or run) the exact command to resume a recorded session in its original directory.
+
+    `afr list`/`afr search` show only an 8-char id prefix, but `claude --resume` / `codex resume`
+    need the full session id and must run from the directory the session started in. This resolves
+    the prefix to the full id + recorded cwd and hands you (or runs) the ready-to-paste command.
+    """
+    conn = get_connection()
+    init_db(conn)
+    matches = resolve_runs_by_prefix(conn, run_id)
+    conn.close()
+
+    if not matches:
+        console.print(f"[red]Run not found: {run_id}[/red]")
+        raise typer.Exit(1)
+    if len(matches) > 1:
+        console.print(f"[yellow]Multiple runs match '{run_id}'. Use more characters:[/yellow]")
+        print_run_list(matches)
+        raise typer.Exit(1)
+
+    row = matches[0]
+    full_id = row["id"]
+    cwd = (row["cwd"] or "")
+    branch = (row["git_branch"] or "")
+    tool_cmd = f"codex resume {full_id}" if row["source"] == "codex" else f"claude --resume {full_id}"
+
+    console.print(f"[bold]Session:[/bold] {full_id}  [dim]({row['source']})[/dim]")
+    if row["user_goal"]:
+        console.print(f"[dim]{row['user_goal'][:80]}[/dim]")
+    if branch:
+        console.print(f"[dim]branch: {branch}[/dim]")
+
+    if cwd:
+        console.print("\n[dim]Resume with:[/dim]")
+        console.print(f'  cd "{cwd}" && {tool_cmd}')
+    else:
+        console.print("\n[yellow]Original directory not recorded (older session, or re-ingest needed).[/yellow]")
+        console.print(f"[dim]Run this from the project directory:[/dim]\n  {tool_cmd}")
+
+    if run:
+        import subprocess
+        try:
+            rc = subprocess.call(tool_cmd.split(), cwd=cwd or None)
+        except FileNotFoundError:
+            console.print(f"[red]Could not launch '{tool_cmd.split()[0]}'. Is it on PATH?[/red]")
+            raise typer.Exit(1)
+        raise typer.Exit(rc)
 
 
 @app.command()

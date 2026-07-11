@@ -19,6 +19,7 @@ def parse_session_file(path: Path) -> ParsedSession:
     lines = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
     project_path = path.parent.name
+    cwd = git_branch = ""
     user_goal = final_summary = started_at = ended_at = ""
     tokens_in = tokens_out = cache_read = cache_write = 0
     tool_calls: list[ToolCall] = []
@@ -34,6 +35,13 @@ def parse_session_file(path: Path) -> ParsedSession:
             started_at = ts
         if ts:
             ended_at = ts
+
+        # cwd/gitBranch appear on most event lines; keep the last non-empty seen
+        # (a session's cwd is stable; branch reflects where it ended).
+        if line.get("cwd"):
+            cwd = line["cwd"]
+        if line.get("gitBranch"):
+            git_branch = line["gitBranch"]
 
         msg_type = line.get("type", "")
         message = line.get("message", {})
@@ -145,6 +153,7 @@ def parse_session_file(path: Path) -> ParsedSession:
 
     return ParsedSession(
         run=Run(id=run_id, source="claude", project_path=project_path,
+                cwd=cwd, git_branch=git_branch,
                 started_at=started_at, ended_at=ended_at, user_goal=user_goal,
                 final_summary=final_summary, tokens_in=tokens_in, tokens_out=tokens_out,
                 cache_read=cache_read, cache_write=cache_write, cost_usd=cost_usd),

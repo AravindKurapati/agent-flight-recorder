@@ -77,6 +77,28 @@ afr search "modal" --days 30
 ```
 ![alt text](docs/images/image-4.png)
 
+### Resume a session
+
+`afr list`/`afr search` show an 8-char id prefix, but `claude --resume` needs the
+full session id *and* must run from the directory the session started in. `afr resume`
+resolves the prefix to the full id plus the recorded working directory and hands you
+the exact command:
+
+```bash
+afr resume 6c84c429
+#   Session: 6c84c429-b7cb-4685-af6d-a318a2def2fc  (claude)
+#   branch: main
+#   Resume with:
+#     cd "D:\Aru\NYU\prosper-podcast" && claude --resume 6c84c429-b7cb-4685-af6d-a318a2def2fc
+
+afr resume 6c84c429 --run    # launch it now instead of printing
+```
+
+An ambiguous prefix lists the matches so you can add characters. Codex sessions get a
+`codex resume <id>` command instead. Sessions recorded before v0.2.0 backfill their
+directory on the next `afr ingest`; if the original session file is gone, resume still
+gives you the full id to run from the project directory yourself.
+
 ### See patterns across sessions
 
 ```bash
@@ -134,6 +156,7 @@ It clusters sessions by keyword similarity, finds ones that ended in `shipped`, 
 | `afr ingest codex` | Parse `~/.codex/` sessions into the database |
 | `afr list [--days N]` | Table of recent runs with goals, outcomes, and token in/out |
 | `afr show <id>` | Full detail: tool calls, shell commands, errors, cost |
+| `afr resume <id>` | Print (or `--run`) the command to resume a session in its original directory |
 | `afr search <query>` | Full-text search across run goals and summaries |
 | `afr stats [--days N]` | Outcome distribution, top tools, error counts |
 | `afr tag <id> <outcome>` | Label a run: shipped / blocked / abandoned / exploratory |
@@ -149,6 +172,7 @@ It clusters sessions by keyword similarity, finds ones that ended in `shipped`, 
 For each session:
 
 - **Goal** - first user message
+- **Location** - the working directory and git branch the session ran in (enables `afr resume`)
 - **Tool calls** - every tool fired, input summary, success or error
 - **Shell commands** - command, exit code, stdout/stderr excerpt
 - **File events** - every read, write, patch, or delete
