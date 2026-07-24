@@ -114,6 +114,17 @@ sends anything anywhere — `--json` is meant to be read by a separate process
 (e.g. a scheduled agent) that wants to turn the numbers into a narrative summary
 or email, since `afr` itself holds no API keys.
 
+### Compare two sessions
+
+```bash
+afr diff 6c84c429 a1b2c3d4          # summary: cost, tokens, duration, outcome
+afr diff 6c84c429 a1b2c3d4 --full   # also show aligned tool-call sequence
+```
+
+Useful for "why did this take 3 sessions" — line up what each attempt actually
+did. Ambiguous prefixes list their matches instead of guessing, same as `afr
+resume`.
+
 ### See patterns across sessions
 
 ```bash
