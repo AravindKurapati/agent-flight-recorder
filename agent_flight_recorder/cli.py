@@ -5,6 +5,7 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
+import json
 from pathlib import Path
 from typing import Optional
 import typer
@@ -14,10 +15,12 @@ from .db import (get_connection, init_db, DB_PATH, list_runs, get_run, get_run_e
                  resolve_runs_by_prefix)
 from .ingester import ingest_claude, ingest_codex
 from .analyzers.stats import get_stats
+from .analyzers.digest import get_digest
 from .analyzers.skill_extractor import run_extraction
 from .analyzers.outcome_suggester import suggest_outcome
 from .analyzers.windows import build_report, parse_weekly_reset
-from .render.terminal import console, print_run_list, print_run_detail, print_stats, print_windows
+from .render.terminal import (console, print_run_list, print_run_detail, print_stats,
+                              print_windows, print_digest)
 
 app = typer.Typer(name="afr", help="Agent Flight Recorder — local AI session observability", add_completion=False)
 
@@ -261,6 +264,24 @@ def stats(days: Optional[int] = typer.Option(None, "--days", "-d")):
     s = get_stats(conn, days)
     conn.close()
     print_stats(s)
+
+
+@app.command()
+def digest(
+    week: bool = typer.Option(True, "--week", help="Last 7 days (default)."),
+    month: bool = typer.Option(False, "--month", help="Last 30 days."),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output."),
+):
+    """Show a weekly/monthly rollup: sessions, cost, outcomes, per-project breakdown."""
+    days = 30 if month else 7
+    conn = get_connection()
+    init_db(conn)
+    d = get_digest(conn, days)
+    conn.close()
+    if json_output:
+        print(json.dumps(d))
+    else:
+        print_digest(d)
 
 
 def _is_hex_id(s: str) -> bool:

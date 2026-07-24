@@ -99,6 +99,21 @@ An ambiguous prefix lists the matches so you can add characters. Codex sessions 
 directory on the next `afr ingest`; if the original session file is gone, resume still
 gives you the full id to run from the project directory yourself.
 
+### Weekly/monthly digest
+
+```bash
+afr digest              # last 7 days
+afr digest --month      # last 30 days
+afr digest --json       # machine-readable, for piping into another agent
+```
+
+Shows total sessions/cost/tokens, an outcome breakdown, a per-project split, and
+two derived signals: a warning if your most recent sessions were abandoned/blocked
+back-to-back, and cost-per-shipped-session. `afr digest` never calls an LLM or
+sends anything anywhere — `--json` is meant to be read by a separate process
+(e.g. a scheduled agent) that wants to turn the numbers into a narrative summary
+or email, since `afr` itself holds no API keys.
+
 ### See patterns across sessions
 
 ```bash

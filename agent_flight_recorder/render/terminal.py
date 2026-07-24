@@ -126,3 +126,40 @@ def print_windows(report: dict) -> None:
         console.print("  This week:    [dim]set your weekly reset to see this[/dim]")
         console.print('  [yellow]Tip:[/yellow] run [bold]afr config set weekly-reset "Wed 00:00"[/bold] '
                       'and [bold]afr config set timezone "America/New_York"[/bold]')
+
+
+def print_digest(digest: dict) -> None:
+    days = digest["period_days"]
+    console.print(Panel(f"[bold]Digest — last {days} days[/bold]"))
+    if digest["total_runs"] == 0:
+        console.print(f"[yellow]No sessions in the last {days} days.[/yellow]")
+        return
+
+    console.print(
+        f"  Sessions: [bold]{digest['total_runs']}[/bold]   "
+        f"Cost: [bold]${digest['total_cost_usd']:.2f}[/bold]   "
+        f"Tokens: {_fmt_tokens(digest['total_tokens_in'])} in / {_fmt_tokens(digest['total_tokens_out'])} out"
+    )
+    outcome_parts = []
+    for outcome, count in digest["outcomes"].items():
+        color = _OUTCOME_COLORS.get(outcome, "dim")
+        outcome_parts.append(f"[{color}]{outcome}[/{color}] {count}")
+    console.print("  Outcomes: " + " | ".join(outcome_parts))
+
+    cps = digest["cost_per_shipped"]
+    cps_str = f"${cps:.2f}" if cps is not None else "n/a"
+    console.print(f"  Cost/shipped: [bold]{cps_str}[/bold]")
+
+    if digest["abandoned_streak"] >= 2:
+        console.print(
+            f"\n  [yellow]⚠ Last {digest['abandoned_streak']} sessions in a row were "
+            f"abandoned/blocked — worth a look.[/yellow]"
+        )
+
+    if digest["by_project"]:
+        console.print("\n[bold]By project[/bold]")
+        for project, stats in sorted(digest["by_project"].items(), key=lambda kv: -kv[1]["runs"]):
+            outcome_str = ", ".join(f"{o} {c}" for o, c in stats["outcomes"].items())
+            console.print(
+                f"  {project:<28} {stats['runs']:>2} runs   ${stats['cost_usd']:.2f}   {outcome_str}"
+            )
