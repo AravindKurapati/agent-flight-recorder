@@ -16,11 +16,12 @@ from .db import (get_connection, init_db, DB_PATH, list_runs, get_run, get_run_e
 from .ingester import ingest_claude, ingest_codex
 from .analyzers.stats import get_stats
 from .analyzers.digest import get_digest
+from .analyzers.diff import compute_summary, align_tool_calls
 from .analyzers.skill_extractor import run_extraction
 from .analyzers.outcome_suggester import suggest_outcome
 from .analyzers.windows import build_report, parse_weekly_reset
 from .render.terminal import (console, print_run_list, print_run_detail, print_stats,
-                              print_windows, print_digest)
+                              print_windows, print_digest, print_diff)
 
 app = typer.Typer(name="afr", help="Agent Flight Recorder — local AI session observability", add_completion=False)
 
@@ -282,6 +283,51 @@ def digest(
         print(json.dumps(d))
     else:
         print_digest(d)
+
+
+def _resolve_diff_id(conn, id_str: str):
+    """Resolve one id/prefix for `afr diff`. Returns (run_or_None, ok: bool)."""
+    matches = resolve_runs_by_prefix(conn, id_str)
+    if not matches:
+        console.print(f"[red]No run matches '{id_str}'.[/red]")
+        return None, False
+    if len(matches) > 1:
+        console.print(f"[yellow]Multiple runs match '{id_str}'. Add more characters:[/yellow]")
+        print_run_list(matches)
+        return None, False
+    return matches[0], True
+
+
+@app.command()
+def diff(
+    id1: str = typer.Argument(..., help="First run ID/prefix."),
+    id2: str = typer.Argument(..., help="Second run ID/prefix."),
+    full: bool = typer.Option(False, "--full", help="Also show aligned tool-call sequence."),
+):
+    """Compare two sessions side by side."""
+    conn = get_connection()
+    init_db(conn)
+
+    run_a, ok_a = _resolve_diff_id(conn, id1)
+    run_b, ok_b = _resolve_diff_id(conn, id2)
+    if not ok_a or not ok_b:
+        conn.close()
+        raise typer.Exit(1)
+
+    events_a = get_run_events(conn, run_a["id"])
+    events_b = get_run_events(conn, run_b["id"])
+    conn.close()
+
+    summary_a = compute_summary(run_a, events_a)
+    summary_b = compute_summary(run_b, events_b)
+
+    alignment = None
+    if full:
+        names_a = [tc["tool_name"] for tc in events_a["tool_calls"]]
+        names_b = [tc["tool_name"] for tc in events_b["tool_calls"]]
+        alignment = align_tool_calls(names_a, names_b)
+
+    print_diff(run_a, run_b, summary_a, summary_b, alignment)
 
 
 def _is_hex_id(s: str) -> bool:

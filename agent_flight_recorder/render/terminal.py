@@ -163,3 +163,48 @@ def print_digest(digest: dict) -> None:
             console.print(
                 f"  {project:<28} {stats['runs']:>2} runs   ${stats['cost_usd']:.2f}   {outcome_str}"
             )
+
+
+def _fmt_duration(seconds) -> str:
+    if seconds is None:
+        return "in progress"
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    if seconds < 3600:
+        return f"{seconds/60:.0f}m"
+    return f"{seconds/3600:.1f}h"
+
+
+def print_diff(run_a, run_b, summary_a, summary_b, alignment: list = None) -> None:
+    id_a, id_b = run_a["id"][:8], run_b["id"][:8]
+    console.print(Panel(f"[bold]Diff: {id_a} vs {id_b}[/bold]"))
+
+    def _outcome_cell(outcome):
+        color = _OUTCOME_COLORS.get(outcome, "dim")
+        return f"[{color}]{outcome}[/{color}]"
+
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("")
+    table.add_column(id_a, no_wrap=True)
+    table.add_column(id_b, no_wrap=True)
+    table.add_row("Outcome", _outcome_cell(summary_a["outcome"]), _outcome_cell(summary_b["outcome"]))
+    table.add_row("Cost", f"${summary_a['cost_usd']:.2f}", f"${summary_b['cost_usd']:.2f}")
+    table.add_row(
+        "Tokens",
+        f"{_fmt_tokens(summary_a['tokens_in'])} in / {_fmt_tokens(summary_a['tokens_out'])} out",
+        f"{_fmt_tokens(summary_b['tokens_in'])} in / {_fmt_tokens(summary_b['tokens_out'])} out",
+    )
+    table.add_row("Duration", _fmt_duration(summary_a["duration_seconds"]), _fmt_duration(summary_b["duration_seconds"]))
+    table.add_row("Tool calls", str(summary_a["tool_call_count"]), str(summary_b["tool_call_count"]))
+    table.add_row("Errors", str(summary_a["error_count"]), str(summary_b["error_count"]))
+    table.add_row("Shell failures", str(summary_a["shell_failure_count"]), str(summary_b["shell_failure_count"]))
+    console.print(table)
+
+    if alignment is not None:
+        console.print("\n[bold]Tool-call sequence[/bold]")
+        seq_table = Table(show_header=True, header_style="bold magenta")
+        seq_table.add_column(id_a)
+        seq_table.add_column(id_b)
+        for a, b in alignment:
+            seq_table.add_row(a or "-", b or "-")
+        console.print(seq_table)
