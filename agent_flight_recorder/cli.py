@@ -17,11 +17,12 @@ from .ingester import ingest_claude, ingest_codex
 from .analyzers.stats import get_stats
 from .analyzers.digest import get_digest
 from .analyzers.diff import compute_summary, align_tool_calls
+from .analyzers.errors import get_recurring_errors
 from .analyzers.skill_extractor import run_extraction
 from .analyzers.outcome_suggester import suggest_outcome
 from .analyzers.windows import build_report, parse_weekly_reset
 from .render.terminal import (console, print_run_list, print_run_detail, print_stats,
-                              print_windows, print_digest, print_diff)
+                              print_windows, print_digest, print_diff, print_errors)
 
 app = typer.Typer(name="afr", help="Agent Flight Recorder — local AI session observability", add_completion=False)
 
@@ -328,6 +329,19 @@ def diff(
         alignment = align_tool_calls(names_a, names_b)
 
     print_diff(run_a, run_b, summary_a, summary_b, alignment)
+
+
+@app.command("errors")
+def errors_cmd(
+    min_count: int = typer.Option(2, "--min-count", help="Minimum occurrences to show."),
+    days: Optional[int] = typer.Option(None, "--days", help="Restrict to the last N days."),
+):
+    """Show recurring failed shell commands, ranked by occurrence count."""
+    conn = get_connection()
+    init_db(conn)
+    entries = get_recurring_errors(conn, min_count=min_count, days=days)
+    conn.close()
+    print_errors(entries, min_count)
 
 
 def _is_hex_id(s: str) -> bool:
