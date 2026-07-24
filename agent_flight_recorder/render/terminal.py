@@ -208,3 +208,31 @@ def print_diff(run_a, run_b, summary_a, summary_b, alignment: list = None) -> No
         for a, b in alignment:
             seq_table.add_row(a or "-", b or "-")
         console.print(seq_table)
+
+
+def print_errors(entries: list[dict], min_count: int = 2) -> None:
+    if not entries:
+        console.print("[yellow]No recurring failures found.[/yellow]")
+        return
+
+    console.print(Panel(f"[bold]Recurring shell failures (min {min_count} occurrences)[/bold]"))
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Count", justify="right", no_wrap=True)
+    table.add_column("Exit", justify="right", no_wrap=True)
+    table.add_column("Command", min_width=30)
+    table.add_column("First seen", no_wrap=True)
+    table.add_column("Last seen", no_wrap=True)
+    table.add_column("Sessions")
+    for e in entries:
+        cmd = e["command"]
+        cmd_cell = cmd[:60] + ".." if len(cmd) > 62 else cmd
+        sessions = ", ".join(e["run_ids"][:5])
+        if len(e["run_ids"]) > 5:
+            sessions += ", .."
+        table.add_row(
+            str(e["count"]), str(e["exit_code"]), cmd_cell,
+            e["first_seen"][:10] if e["first_seen"] else "",
+            e["last_seen"][:10] if e["last_seen"] else "",
+            sessions,
+        )
+    console.print(table)
