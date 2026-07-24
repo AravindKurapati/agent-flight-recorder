@@ -125,6 +125,18 @@ Useful for "why did this take 3 sessions" — line up what each attempt actually
 did. Ambiguous prefixes list their matches instead of guessing, same as `afr
 resume`.
 
+### Find recurring failures
+
+```bash
+afr errors                        # recurring failed commands, min 2 occurrences
+afr errors --min-count 3          # raise the threshold
+afr errors --days 30              # restrict to a recent window
+```
+
+Groups failed shell commands by exact `(command, exit_code)` — no fuzzy
+matching — so you can see "you've hit this exact failure N times" instead of
+rediscovering it session by session.
+
 ### See patterns across sessions
 
 ```bash
